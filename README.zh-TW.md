@@ -48,7 +48,7 @@
 // open-dashboard.config.ts
 datasources: { budget: { type: 'csv', tables: { orders: { file: 'data/orders.csv' } } } },
 collectors: {
-  orders: { run: 'npx open-spreadsheet export sales-report --range A1:F200 --out data/orders.csv --root ../my-sheets', source: 'budget', every: '5m' },
+  orders: { run: 'npx -p @open-spreadsheet/core open-spreadsheet export sales-report --range A1:F200 --out data/orders.csv --root ../my-sheets', source: 'budget', every: '5m' },
 },
 ```
 
@@ -71,7 +71,7 @@ agy plugin install https://github.com/simonliu-ai-product/open-spreadsheet
 ## 快速開始
 
 ```bash
-npx @open-spreadsheet/core init my-sheets
+npx -p @open-spreadsheet/core open-spreadsheet init my-sheets
 cd my-sheets && pnpm install && pnpm dev    # http://localhost:5373
 ```
 
