@@ -160,3 +160,19 @@ function legend(names: string[], w: number, h: number): string {
     })
     .join('');
 }
+
+/**
+ * A chart as a file of its own — for the Assets folder, a note or another
+ * program: the SVG with its namespace, a white background and the colours the
+ * page would give it written in, since no stylesheet comes with it.
+ */
+export function chartFile(spec: ChartSpec, data: ChartData, w = 720, h = 405): string {
+  const style =
+    '<style>text{font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Segoe UI",sans-serif}' +
+    '.c-title{font-weight:600;font-size:13px;fill:#1f1f1f}.c-tick{font-size:11px;fill:#5f6368}.c-muted{font-size:14px;fill:#5f6368}' +
+    '.c-grid{stroke:#e8eaed;stroke-width:1}.c-axis{stroke:#9aa0a6;stroke-width:1}</style>';
+  return chartSvg(spec, data, w, h)
+    .replace(/^<svg /, '<svg xmlns="http://www.w3.org/2000/svg" ')
+    .replace('>', `>${style}<rect width="100%" height="100%" fill="#ffffff"/>`)
+    .replaceAll('var(--sheet)', '#ffffff');
+}

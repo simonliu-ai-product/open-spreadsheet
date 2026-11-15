@@ -189,6 +189,32 @@ kbd { font: 10.5px var(--mono); color: var(--muted-foreground); border: 1px soli
 .finput { flex: 1; min-width: 0; border: 0; outline: none; padding: 0 12px; background: transparent; font: 13px var(--mono); }
 
 .grid-wrap { flex: 1; min-height: 0; position: relative; }
+
+/* Assets: a drawer over the grid's right side. */
+.assets-panel { position: absolute; top: 0; right: 0; bottom: 0; width: min(360px, 92vw); z-index: 30; display: flex; flex-direction: column; background: var(--background); border-left: 1px solid var(--border); box-shadow: -12px 0 24px -16px rgb(0 0 0 / 0.25); }
+.assets-panel[hidden] { display: none; }
+.assets-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 4px 16px; }
+.assets-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.assets-hint { margin: 0 16px 10px; font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
+.assets-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; border-bottom: 1px solid var(--border); }
+.assets-actions .btn { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.assets-list { flex: 1; overflow: auto; padding: 4px 16px 20px; }
+.assets-section h3 { margin: 14px 0 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-foreground); }
+.assets-empty { margin: 0; font-size: 12.5px; color: var(--muted-foreground); }
+.asset-card { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--background); }
+.asset-card.fresh { border-color: var(--select); box-shadow: 0 0 0 2px color-mix(in srgb, var(--select) 25%, transparent); }
+.asset-preview { display: block; background: #fff; }
+.asset-preview img { display: block; width: 100%; height: auto; }
+.asset-note { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 0; background: none; color: var(--foreground); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.asset-note:hover { background: var(--muted); }
+.asset-note-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-foot { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; border-top: 1px solid var(--border); }
+.asset-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--muted-foreground); }
+.asset-foot .icon-link { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; color: var(--muted-foreground); }
+.asset-foot .icon-link:hover { background: var(--muted); color: var(--foreground); }
+.legacy-charts { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12.5px; background: color-mix(in srgb, var(--select) 8%, var(--background)); border-bottom: 1px solid var(--border); }
+.legacy-charts[hidden] { display: none; }
+.legacy-charts .btn { height: 26px; padding: 0 10px; font-size: 12px; }
 .grid { position: absolute; inset: 0; overflow: hidden; background: var(--sheet); color: var(--cell-fg); --z: 1; user-select: none; -webkit-user-select: none; }
 .corner { position: absolute; left: 0; top: 0; width: 46px; height: 24px; z-index: 6; background: var(--head); border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); }
 .corner.picked { background: var(--head-picked); }

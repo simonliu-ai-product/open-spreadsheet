@@ -10,7 +10,8 @@
  *
  * Speaks JSON-RPC 2.0, one message per line, with no dependencies.
  */
-import { existsSync } from 'node:fs';
+import { assetsDir, listAssets, readAsset, renderChart, trashAsset, writeNote } from './assets.js';
+import { existsSync, cpSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { columnIndex, columnName, formatA1, parseA1, Workbook } from '@open-spreadsheet/engine';
@@ -94,8 +95,7 @@ const TOOLS = [
         charts: {
           type: 'array',
           items: { type: 'object' },
-          description:
-            'Replaces the charts: [{ "id": "sales", "type": "bar"|"line"|"pie", "range": "A1:C13" (first column categories, first row series names), "title": "…", "x": 520, "y": 0, "w": 440, "h": 270 }] in px at 100% zoom',
+          description: 'Only [] is accepted: it removes charts an older workbook still has on its grid. New charts are images in Assets — use render_chart.',
         },
         hidden_rows: { type: 'array', items: { type: 'number' }, description: 'Replaces the rows hidden by hand (1-based numbers); [] shows them all' },
         hidden_cols: { type: 'array', items: { type: 'string' }, description: 'Replaces the columns hidden by hand (letters); [] shows them all' },
@@ -115,6 +115,47 @@ const TOOLS = [
     name: 'create_workbook',
     description: 'Create a workbook at sheets/<id>/workbook.json. sheets is optional: [{ name, cells, styles, cols, freeze }]; a blank Sheet1 otherwise.',
     inputSchema: { type: 'object', properties: { id: { ...str, description: 'lowercase letters, numbers and dashes' }, title: str, sheets: { type: 'array', items: { type: 'object' } } }, required: ['id', 'title'] },
+  },
+  {
+    name: 'list_assets',
+    description:
+      "A workbook's images and Markdown notes (sheets/<id>/assets/), or the workspace's shared ones (scope \"shared\"). Notes are context people keep about the numbers — read them with read_asset before working on a workbook.",
+    inputSchema: { type: 'object', properties: { scope: { ...str, description: 'A workbook id, or "shared"' } }, required: ['scope'] },
+  },
+  {
+    name: 'read_asset',
+    description: 'The text of a Markdown note in a scope. Images are listed by list_assets; their content is not returned.',
+    inputSchema: { type: 'object', properties: { scope: str, name: { ...str, description: 'e.g. notes.md' } }, required: ['scope', 'name'] },
+  },
+  {
+    name: 'write_note',
+    description: 'Create or replace a Markdown note (a .md file) in a workbook\'s assets or the shared ones: explanations, sources, decisions, a summary of what you found.',
+    inputSchema: { type: 'object', properties: { scope: str, name: { ...str, description: 'ends in .md' }, text: str }, required: ['scope', 'name', 'text'] },
+  },
+  {
+    name: 'render_chart',
+    description:
+      'Draw a chart from a range and save it as an SVG image in the workbook\'s assets (or shared): first column the categories, first row the series names when they are text. Charts are not placed on the grid; they live in Assets. Use it when a note or a person asks for a chart.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        workbook: str,
+        sheet: str,
+        range: { ...str, description: 'e.g. A1:C13' },
+        type: { type: 'string', enum: ['bar', 'line', 'pie'] },
+        title: str,
+        name: { ...str, description: 'file name; from the title when omitted' },
+        scope: { ...str, description: 'where to save: the workbook (default) or "shared"' },
+        replace: { type: 'boolean', description: 'overwrite an image of that name instead of numbering a new one' },
+      },
+      required: ['workbook', 'range'],
+    },
+  },
+  {
+    name: 'delete_asset',
+    description: 'Move an image or note to its folder\'s .trash (nothing is erased). Only when the person asked.',
+    inputSchema: { type: 'object', properties: { scope: str, name: str }, required: ['scope', 'name'] },
+    annotations: { destructiveHint: true },
   },
   {
     name: 'rename_workbook',
@@ -378,8 +419,8 @@ async function callTool(root, name, a) {
           }
         }
         if (a.charts !== undefined) {
-          for (const ch of a.charts) parseRange(ch.range);
-          sheet.charts = a.charts.length ? a.charts : undefined;
+          if (a.charts.length) throw new OpsError('charts_in_assets', 'Charts are not placed on the grid any more. Use render_chart to save one as an image in the workbook\'s Assets.');
+          sheet.charts = undefined;
         }
         if (a.hidden_rows !== undefined) sheet.hiddenRows = a.hidden_rows.length ? [...new Set(a.hidden_rows.map(Math.trunc))].sort((x, y) => x - y) : undefined;
         if (a.hidden_cols !== undefined) sheet.hiddenCols = a.hidden_cols.length ? [...new Set(a.hidden_cols.map((l) => String(l).toUpperCase()))] : undefined;
@@ -399,6 +440,18 @@ async function callTool(root, name, a) {
       const { hash } = await writeWorkbook(root, a.id, data, { create: true });
       return { id: a.id, hash, url: `/#/w/${a.id}`, problems: checkWorkbook(data) };
     }
+    case 'list_assets':
+      return { scope: a.scope, assets: listAssets(root, a.scope) };
+    case 'read_asset': {
+      if (!/\.md$/i.test(String(a.name ?? ''))) throw new OpsError('bad_name', 'read_asset reads notes (.md); images are listed by list_assets');
+      return { scope: a.scope, name: a.name, text: readAsset(root, a.scope, a.name) };
+    }
+    case 'write_note':
+      return writeNote(root, a.scope, a.name, a.text);
+    case 'render_chart':
+      return renderChart(root, a.workbook, a);
+    case 'delete_asset':
+      return trashAsset(root, a.scope, a.name);
     case 'rename_workbook': {
       const title = String(a.title ?? '').trim();
       if (!title || title.length > 200 || /[\n\r]/.test(title)) throw new OpsError('bad_title', 'A title is one line of 1 to 200 characters.');
@@ -416,6 +469,8 @@ async function callTool(root, name, a) {
       const id = a.new_id ?? nextCopyId(a.workbook, taken);
       const title = /\(copy( \d+)?\)$/.test(data.title) ? data.title : `${data.title} (copy)`;
       const { hash } = await writeWorkbook(root, id, { ...data, title }, { create: true });
+      const from = assetsDir(root, a.workbook);
+      if (existsSync(from)) cpSync(from, assetsDir(root, id), { recursive: true, filter: (f) => !f.includes(`${path.sep}.trash`) });
       return { id, title, hash, url: `/#/w/${id}` };
     }
     case 'delete_workbook':

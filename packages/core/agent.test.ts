@@ -118,6 +118,31 @@ describe('MCP over stdio', () => {
     const gone = await call(18, 'tools/call', { name: 'delete_workbook', arguments: { workbook: 'getting-started-copy' } });
     expect(gone.result.structuredContent.trashedTo).toMatch(/^sheets\/\.trash\/getting-started-copy-/);
     expect(existsSync(path.join(root, 'sheets/getting-started-copy'))).toBe(false);
+    // Assets: notes are context, charts are images beside the workbook.
+    const noted2 = await call(30, 'tools/call', { name: 'write_note', arguments: { scope: 'getting-started', name: '說明.md', text: '# 預算\n金額是新台幣' } });
+    expect(noted2.result.isError).toBeUndefined();
+    const readBack = await call(31, 'tools/call', { name: 'read_asset', arguments: { scope: 'getting-started', name: '說明.md' } });
+    expect(readBack.result.structuredContent.text).toContain('新台幣');
+    const chart = await call(32, 'tools/call', { name: 'render_chart', arguments: { workbook: 'getting-started', sheet: 'Costs', range: 'A2:B5', type: 'bar', title: 'Costs by item' } });
+    expect(chart.result.structuredContent).toMatchObject({ scope: 'getting-started', name: 'Costs-by-item.svg', type: 'bar' });
+    const svg = readFileSync(path.join(root, 'sheets/getting-started/assets/Costs-by-item.svg'), 'utf8');
+    expect(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
+    expect(svg).toContain('Costs by item');
+    const listedAssets = await call(33, 'tools/call', { name: 'list_assets', arguments: { scope: 'getting-started' } });
+    expect(listedAssets.result.structuredContent.assets.map((x: { name: string }) => x.name).sort()).toEqual(['Costs-by-item.svg', '說明.md']);
+    const escape = await call(34, 'tools/call', { name: 'write_note', arguments: { scope: 'getting-started', name: '../../evil.md', text: 'x' } });
+    expect(escape.result.isError).toBe(true);
+    expect(existsSync(path.join(root, 'evil.md'))).toBe(false);
+    const shared = await call(35, 'tools/call', { name: 'list_assets', arguments: { scope: 'shared' } });
+    expect(shared.result.structuredContent.assets.map((x: { name: string }) => x.name)).toContain('README.md');
+    const copyWithAssets = await call(36, 'tools/call', { name: 'duplicate_workbook', arguments: { workbook: 'getting-started', new_id: 'with-assets' } });
+    expect(copyWithAssets.result.isError).toBeUndefined();
+    expect(existsSync(path.join(root, 'sheets/with-assets/assets/Costs-by-item.svg'))).toBe(true);
+    const trashed = await call(37, 'tools/call', { name: 'delete_asset', arguments: { scope: 'with-assets', name: 'Costs-by-item.svg' } });
+    expect(trashed.result.structuredContent.trashedTo).toMatch(/^sheets\/with-assets\/assets\/\.trash\//);
+    const onGrid = await call(38, 'tools/call', { name: 'set_layout', arguments: { workbook: 'getting-started', sheet: 'Costs', charts: [{ id: 'c', type: 'bar', range: 'A1:B3', x: 0, y: 0, w: 100, h: 100 }] } });
+    expect(onGrid.result.isError).toBe(true);
+    expect(onGrid.result.content[0].text).toMatch(/render_chart/);
     // Protection: set by a person in the file, enforced on every MCP write.
     const book = JSON.parse(readFileSync(path.join(root, 'sheets/getting-started/workbook.json'), 'utf8'));
     book.sheets[0].protected = ['A1:B2'];
@@ -174,7 +199,7 @@ describe('packaging', () => {
     const { readdirSync, statSync } = await import('node:fs');
     const pkg = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
     const packed = (rel: string) => pkg.files.some((e: string) => rel === e || rel.startsWith(`${e}/`));
-    const sources = ['bin.js', 'mcp.js', 'server.js', 'ops.js', ...readdirSync(path.join(__dirname, 'app')).filter((f) => /\.ts$/.test(f) && !f.endsWith('.test.ts')).map((f) => `app/${f}`)];
+    const sources = ['bin.js', 'mcp.js', 'server.js', 'ops.js', 'assets.js', ...readdirSync(path.join(__dirname, 'app')).filter((f) => /\.ts$/.test(f) && !f.endsWith('.test.ts')).map((f) => `app/${f}`)];
     const problems: string[] = [];
     for (const rel of sources) {
       const text = readFileSync(path.join(__dirname, rel), 'utf8');
@@ -190,6 +215,20 @@ describe('packaging', () => {
       }
     }
     expect(problems).toEqual([]);
+  });
+
+  it('builds a chart renderer that runs from node_modules without type stripping', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const pkg = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    expect(pkg.files).toContain('dist');
+    expect(pkg.scripts.prepack).toContain('build-charts');
+    const dir = path.join(mkdtempSync(path.join(tmpdir(), 'oss-charts-')), 'node_modules', 'core', 'dist');
+    execFileSync(process.execPath, [path.join(__dirname, 'scripts/build-charts.mjs'), dir]);
+    const engine = path.join(__dirname, '../engine/src/index.ts');
+    const js = readFileSync(path.join(dir, 'charts.js'), 'utf8').replace("'@open-spreadsheet/engine'", JSON.stringify(engine));
+    (await import('node:fs')).writeFileSync(path.join(dir, 'charts.mjs'), js);
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', `import { chartData, chartFile } from ${JSON.stringify(path.join(dir, 'charts.mjs'))}; console.log(chartFile({ id: 'a', type: 'bar', range: 'A1:B3', title: 'T', x: 0, y: 0, w: 1, h: 1 }, chartData([['k', 'v'], ['a', 1], ['b', 2]])).slice(0, 40));`], { encoding: 'utf8' });
+    expect(out.trim()).toBe('<svg xmlns="http://www.w3.org/2000/svg"');
   });
 
   it('builds an engine that runs from node_modules without type stripping', async () => {

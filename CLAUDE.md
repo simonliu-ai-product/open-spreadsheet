@@ -8,7 +8,7 @@
 pnpm test        # 引擎測試（vitest）
 pnpm typecheck   # engine + core/app
 pnpm bench       # 重算效能
-node scripts/ui-e2e.mjs <輸出資料夾>   # Chromium 端對端檢查（99 項）＋截圖
+node scripts/ui-e2e.mjs <輸出資料夾>   # Chromium 端對端檢查（97 項）＋截圖
 # 在工作區內（例如 ../playground/open-spreadsheet-sample）
 pnpm dev         # open-spreadsheet dev，預設 port 5373
 ```
@@ -19,6 +19,7 @@ pnpm dev         # open-spreadsheet dev，預設 port 5373
 - `packages/core/`：`bin.js`（CLI：dev／init／check／sync-skills）、`server.js`（Vite dev server、`/__api/workbooks`、`current.json`）、`ops.js`（列出、讀寫含 SHA-256 樂觀鎖、check，dev server／CLI／MCP 共用）、`mcp.js`（stdio MCP server，手寫 JSON-RPC、無依賴）、`skills/` 與 `templates/AGENTS.md`（init 寫進工作區）、`app/`（格子介面，直接 import 引擎原始碼）
   - `app/book.ts` 編輯器（格子、凍結窗格、合併、格式、選單、填滿、尋找、歷史、分頁）、`home.ts` 首頁、`io.ts`（CSV／xlsx 與 zip）、`ui.ts`（選單、對話框、⌘K、主題）、`i18n.ts`＋`i18n-more.ts`（五種語言，新字串五種都要補）、`templates.ts`、`help.ts`（函數說明）
 - `packages/open-spreadsheet/`：npm 上沒有 scope 的 `open-spreadsheet`，只是 `@open-spreadsheet/core` CLI 的短名稱（`npx open-spreadsheet init`），也避免這個名稱被別人搶註
+- `packages/core/assets.js`：assets（`sheets/<id>/assets/`、共用 `assets/`）的列出、筆記讀寫、上傳、刪除（移到 `.trash`）與 `renderChart`（伺服器端用 `app/charts.ts` 畫 SVG；安裝後讀 `dist/charts.js`，由 `scripts/build-charts.mjs` 在 pack 前產生）。圖表不再放在格子上
 - `plugins/open-spreadsheet/`：Claude Code／Antigravity plugin；`skills/` 是 `packages/core/skills/` 的複本，`agent.test.ts` 檢查兩邊一致
 - 工作區格式：`open-spreadsheet.config.json` 加 `sheets/<id>/workbook.json`，存使用者輸入的原文
 

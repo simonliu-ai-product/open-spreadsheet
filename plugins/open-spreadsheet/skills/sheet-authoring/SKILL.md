@@ -35,7 +35,7 @@ Each workbook is `sheets/<id>/workbook.json`. The grid editor at `pnpm dev` relo
 | `hiddenRows` / `hiddenCols` | Rows (1-based numbers) and columns (letters) hidden by hand |
 | `names` (top level, beside `sheets`) | Defined names: `{ "Sales": "Orders!$F$2:$F$200" }`, used in formulas as `=SUM(Sales)`; each points at a cell or range with its sheet |
 | `protected` | Ranges a person locked, `["A1:D1", "F2"]`. The editor and MCP refuse to change them; never edit or remove them yourself — ask the person |
-| `charts` | Charts over the grid: `[{ "id": "sales", "type": "bar", "range": "A1:C13", "title": "Sales by month", "x": 520, "y": 0, "w": 440, "h": 270 }]` — `type` is `bar`, `line` or `pie`; the range's first column holds the categories and its first row the series names; `x`/`y`/`w`/`h` are px at 100% zoom from the sheet's top-left |
+| `charts` | Not used for new work: charts are images in Assets (below). An older workbook may still have charts here; the editor offers to move them |
 | `color` | The sheet tab's colour |
 | `notes` | A1 address → a note left on the cell (see the `apply-notes` skill) |
 | `conditional` | Conditional formats, later ones win: `{ "range": "D2:D50", "type": "gt", "value": 10000, "style": { "bg": "#ffc7ce", "color": "#9c0006" } }`; types `gt lt ge le eq ne` (value), `between` (value, value2), `contains` (text), `duplicate`, `colorScale` (`colors`: 2 or 3 hex, low → high), `dataBar` (`color`), `top` (`rank`, optional `percent`, `bottom`), `average` (optional `below`, `equal`), `iconSet` (`set` as Excel names it — `3Arrows`, `3TrafficLights1`, `4Rating`, `5Arrows`…; optional `thresholds` in percent, `reverse`). All of them go to and from .xlsx |
@@ -74,3 +74,13 @@ Math and trigonometry (SUM, SUMIF(S), SUMPRODUCT, SUBTOTAL, ROUND/ROUNDUP/ROUNDD
 
 1. Run `open-spreadsheet check` (or the MCP `check` tool). It lists formulas that show `#NAME?`, `#REF!`, `#CIRC!`, `#VALUE!` and malformed entries.
 2. Read the result back with the MCP `read_range` tool, or open the workbook in the viewer.
+
+## Assets: chart images and notes
+
+Each workbook has an assets folder, `sheets/<id>/assets/`, and the workspace has a shared one, `assets/`. They hold:
+
+- **Chart images.** Charts are never placed on the grid. Draw one from a range with the MCP `render_chart` tool (`workbook`, `sheet`, `range`, `type` = `bar` | `line` | `pie`, `title`); it saves an SVG in the workbook's assets, the same picture the editor makes. The range's first column holds the categories and its first row the series names.
+- **Notes (`.md`).** What people know about the numbers: sources, meanings, rules to keep. **Read the notes before you change a workbook** (`list_assets` then `read_asset`, or the files themselves), for that workbook and for `shared`. Write what you found or decided with `write_note` when it will help next time.
+
+Without MCP, read and write the files directly. Never put an image or note anywhere else, and never name one with a folder in it.
+

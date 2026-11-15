@@ -19,7 +19,8 @@ import {
   type Node as FormulaNode,
 } from '@open-spreadsheet/engine';
 import { isProtectedCell, touchesProtected, BLANK, columnValues, conditionalLook, type CellLook, DEFAULT_HIGHLIGHT, filteredRows, shiftRange, validationAt } from './features.ts';
-import { chartData, chartSvg } from './charts.ts';
+import { chartData, chartFile, chartSvg } from './charts.ts';
+import { createAssetsPanel, uploadAsset } from './assets.ts';
 import { printHtml } from './print.ts';
 import { api } from './home.ts';
 import { helpFor, suggest } from './help.ts';
@@ -160,6 +161,8 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   const helpBtn = iconButton('keyboard', T.shortcuts, () => showShortcuts());
   const paletteBtn = iconButton('list', `${T.palette.replace('…', '')} (${MOD}K)`, () => void openPalette());
   const notesBtn = iconButton('pencil', T.notes, () => notesMenu());
+  const assetsBtn = iconButton('file', `${T.assets} — ${T.assetsHint}`, () => assets.toggle(), T.assets);
+  assetsBtn.classList.add('with-label');
   const notesBadge = el('span', 'badge');
   notesBtn.append(notesBadge);
   const downloadBtn = el('button', 'btn primary');
@@ -167,7 +170,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   downloadBtn.append(icon('download', 15), el('span', '', T.download), icon('chevronDown', 14));
   const fileMark = el('span', 'brand-mark');
   fileMark.append(icon('sheet', 14));
-  head.append(back, fileMark, titleBtn, status, el('div', 'grow'), notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, downloadBtn);
+  head.append(back, fileMark, titleBtn, status, el('div', 'grow'), assetsBtn, notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, downloadBtn);
 
   // Toolbar
   const toolbar = el('div', 'toolbar');
@@ -291,8 +294,11 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   tabsBar.append(addTab, listTabs, tabs, el('div', 'grow'), stats, zoomSel);
 
   const gridWrap = el('div', 'grid-wrap');
-  gridWrap.append(grid, findbar);
-  root.append(head, toolbar, fbar, gridWrap, tabsBar);
+  // Charts are images in Assets now; a workbook that still has charts on its grid is offered the move.
+  const legacyBar = el('div', 'legacy-charts');
+  const assets = createAssetsPanel({ bookId: id, newChart: (at) => chartImageMenu(at), onClose: () => editor.focus() });
+  gridWrap.append(grid, findbar, assets.el);
+  root.append(head, toolbar, fbar, legacyBar, gridWrap, tabsBar);
   app.replaceChildren(root);
   document.body.append(popup);
 
@@ -2636,16 +2642,82 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
   }
-  function insertChart(type: ChartType) {
+  // ---------- chart images (Assets) ----------
+  const fileSlug = (text: string) =>
+    text
+      .normalize('NFKC')
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+  /** A range drawn as a standalone SVG, the same picture the MCP render_chart tool makes. */
+  function chartImageSvg(sheetName: string, range: string, type: ChartType, title: string): string {
+    const r = parseRange(range);
+    if (!r) return '';
+    const cells = Array.from({ length: r.r1 - r.r0 + 1 }, (_, i) => Array.from({ length: r.c1 - r.c0 + 1 }, (_, k) => wb.value(sheetName, r.r0 + i, r.c0 + k)));
+    const spec: ChartSpec = { id: 'asset', type, range, ...(title ? { title } : {}), x: 0, y: 0, w: 720, h: 405 };
+    return chartFile(spec, chartData(cells));
+  }
+  /** Draws the selection (or the data around the cursor) as a chart image in this workbook's Assets. */
+  async function chartImage(type: ChartType) {
     const s = selection();
     const r = s.r0 === s.r1 && s.c0 === s.c1 ? currentRegion(active) : s;
-    const id = `chart-${Date.now().toString(36)}`;
-    const spec: ChartSpec = { id, type, range: rangeText(r), x: Math.round(colX[Math.min(r.c1 + 1, nCols)]! / zoom) + 16, y: Math.round(rowY[r.r0]! / zoom), w: 440, h: 270 };
+    const range = rangeText(r);
+    const head = wb.value(name(), r.r0, r.c0);
+    const v = await promptDialog({
+      title: T.newChartImage,
+      body: `${name()}!${range}`,
+      fields: [{ name: 't', label: T.title, value: typeof head === 'string' && head ? head : '' }],
+      ok: T.save,
+    });
+    editor.focus();
+    if (!v) return;
+    const title = v.t!.trim();
+    try {
+      const saved = await uploadAsset(id, `${fileSlug(title || `${name()}-${range}`) || 'chart'}.svg`, chartImageSvg(name(), range, type, title));
+      await assets.showSaved(id, saved);
+      toast(T.chartSaved(saved));
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
+  function chartImageMenu(at: HTMLElement) {
+    showMenu(
+      [
+        { label: T.chartBar, icon: 'chart', action: () => void chartImage('bar') },
+        { label: T.chartLine, icon: 'lineChart', action: () => void chartImage('line') },
+        { label: T.chartPie, icon: 'pieChart', action: () => void chartImage('pie') },
+      ],
+      at,
+      () => editor.focus(),
+    );
+  }
+  /** Turns every chart on the grid into an image in Assets, then takes them off the grid (one undo step). */
+  async function moveChartsToAssets() {
+    const all = data.sheets.flatMap((sh) => (sh.charts ?? []).map((c) => ({ sheet: sh.name, c })));
+    if (!all.length) return;
+    try {
+      for (const { sheet: sn, c } of all) {
+        await uploadAsset(id, `${fileSlug(c.title || `${sn}-${c.range}`) || 'chart'}.svg`, chartImageSvg(sn, c.range, c.type, c.title ?? ''));
+      }
+    } catch (e) {
+      toast((e as Error).message);
+      return;
+    }
     change(() => {
-      const sh = sheet();
-      sh.charts = [...(sh.charts ?? []), spec];
+      for (const sh of data.sheets) delete sh.charts;
     }, { relayout: false });
-    selectChart(id);
+    paintLegacyBar();
+    await assets.showSaved(id, '');
+    toast(T.chartsMoved(all.length));
+  }
+  function paintLegacyBar() {
+    const n = data.sheets.reduce((k, sh) => k + (sh.charts?.length ?? 0), 0);
+    legacyBar.hidden = n === 0;
+    if (!n) return;
+    const move = el('button', 'btn primary', T.moveChartsToAssets);
+    move.type = 'button';
+    move.addEventListener('click', () => void moveChartsToAssets());
+    legacyBar.replaceChildren(icon('chart', 14), el('span', '', T.chartsOnGrid(n)), el('div', 'grow'), move);
   }
   function chartMenu(id: string, at: { x: number; y: number } | HTMLElement) {
     const spec = chartSpec(id);
@@ -3184,16 +3256,9 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     );
   };
   tb.cond.addEventListener('click', () => conditionalMenu(tb.cond));
+  tb.chart.title = T.newChartImage;
   tb.chart.addEventListener('click', () =>
-    showMenu(
-      [
-        { label: T.chartBar, icon: 'chart', action: () => insertChart('bar') },
-        { label: T.chartLine, icon: 'lineChart', action: () => insertChart('line') },
-        { label: T.chartPie, icon: 'pieChart', action: () => insertChart('pie') },
-      ],
-      tb.chart,
-      () => editor.focus(),
-    ),
+    chartImageMenu(tb.chart),
   );
   tb.border.addEventListener('click', () => showMenu(borderItems(), tb.border, () => editor.focus()));
   tb.filter.addEventListener('click', () => {
@@ -3403,7 +3468,8 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       cmd(T.gRowsCols, T.hideCols(s.c1 - s.c0 + 1), () => hideCols(s.c0, s.c1), 'eyeOff', undefined, 'hide columns'),
       cmd(T.gRowsCols, T.unhideRows, () => unhideRows(s.r0, s.r1), 'eye', undefined, 'unhide show rows'),
       cmd(T.gRowsCols, T.unhideCols, () => unhideCols(s.c0, s.c1), 'eye', undefined, 'unhide show columns'),
-      ...(['bar', 'line', 'pie'] as const).map((k) => cmd(T.chart, `${T.insertChart}：${{ bar: T.chartBar, line: T.chartLine, pie: T.chartPie }[k]}`, () => insertChart(k), k === 'bar' ? 'chart' : k === 'line' ? 'lineChart' : 'pieChart', undefined, `chart graph ${k}`)),
+      ...(['bar', 'line', 'pie'] as const).map((k) => cmd(T.chart, `${T.newChartImage}：${{ bar: T.chartBar, line: T.chartLine, pie: T.chartPie }[k]}`, () => void chartImage(k), k === 'bar' ? 'chart' : k === 'line' ? 'lineChart' : 'pieChart', undefined, `chart graph image asset ${k}`)),
+      cmd(T.chart, T.assets, () => assets.open(), 'file', undefined, 'assets images notes markdown'),
       cmd(T.gFormat, T.conditional, () => conditionalMenu(tb.cond), 'conditional', undefined, 'conditional formatting color scale data bar highlight'),
       cmd(T.gEdit, T.sortDesc, () => sortBy(true), 'sortDesc', undefined, 'sort descending'),
       ...['SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN'].map((f) => cmd(T.autosum, `${f}( )`, () => autosum(f), 'sigma', undefined, `autosum ${f.toLowerCase()}`)),
@@ -4182,6 +4248,12 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     status.textContent = T.saved;
   }
   import.meta.hot?.on('open-spreadsheet:changed', onExternal);
+  // An agent (or apply-notes) wrote an image or note: the open panel shows it.
+  const onAssets = (d: { scope: string }) => {
+    if (assets.isOpen() && (d.scope === id || d.scope === 'shared')) void assets.refresh();
+  };
+  import.meta.hot?.on('open-spreadsheet:assets', onAssets);
+  paintLegacyBar();
 
   const onBeforeUnload = () => {
     if (saveTimer) void flush();
@@ -4199,6 +4271,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     notePop.remove();
     closeMenus();
     import.meta.hot?.off?.('open-spreadsheet:changed', onExternal);
+    import.meta.hot?.off?.('open-spreadsheet:assets', onAssets);
     teardown = null;
   };
   const onHash = () => {

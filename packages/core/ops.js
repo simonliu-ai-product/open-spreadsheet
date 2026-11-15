@@ -119,6 +119,11 @@ export function nextCopyId(id, taken) {
 
 // ---------- reading cells for agents ----------
 
+/** "B2:D9" or "B2" (with $ allowed) as rows and columns, or null. */
+export function parseRangeText(text) {
+  return parseRange(text);
+}
+
 function parseRange(text) {
   const [a, b] = String(text).toUpperCase().replaceAll('$', '').split(':');
   const p = parseA1(a ?? '');

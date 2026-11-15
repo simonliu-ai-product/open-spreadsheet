@@ -5,7 +5,7 @@
 //
 //   node scripts/ui-e2e.mjs <out dir>
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -389,30 +389,30 @@ await go('B5');
   check('hiding a column removes its header', !(await heads()).includes('D') && (await heads()).includes('E'));
   void gb;
 
-  // charts: insert from the data, see it update, move it, switch type, delete it
-  await go('A1:B4');
-  await page.click('.toolbar button[title="插入圖表"]');
-  await page.click('.menu-item:has-text("長條圖")');
-  await page.waitForSelector('.chart svg');
-  check('a bar chart draws one bar per row', (await page.$$('.chart svg rect[rx="2"]')).length === 3);
+  // charts: images in Assets, never on the grid; notes beside them
   await typeIn('B2', '500');
-  await page.waitForTimeout(100);
-  check('the chart follows the cells', (await page.$eval('.chart svg', (s) => s.textContent ?? '')).includes('500'));
-  const before = await page.$eval('.chart', (n) => n.getBoundingClientRect().toJSON());
-  await page.mouse.move(before.x + 60, before.y + 60);
-  await page.mouse.down();
-  await page.mouse.move(before.x + 160, before.y + 110, { steps: 5 });
-  await page.mouse.up();
-  const after = await page.$eval('.chart', (n) => n.getBoundingClientRect().toJSON());
-  check('dragging moves the chart', Math.round(after.x - before.x) === 100 && Math.round(after.y - before.y) === 50, `${after.x - before.x},${after.y - before.y}`);
-  await page.mouse.click(after.x + 60, after.y + 60, { button: 'right' });
-  await page.click('.menu-item:has-text("圓餅圖")');
-  check('switching to a pie chart', (await page.$$('.chart svg path')).length === 3);
-  await shot('13f-chart');
-  await page.keyboard.press('Backspace');
-  check('backspace deletes the selected chart', (await page.$$('.chart')).length === 0);
-  await page.keyboard.press(`${mod}+z`);
-  check('undo brings the chart back', (await page.$$('.chart')).length === 1);
+  await go('A1:B4');
+  await page.click('.toolbar button[title="圖表圖片"]');
+  await page.click('.menu-item:has-text("長條圖")');
+  await page.waitForSelector('.dialog');
+  await page.fill('.dialog input >> nth=0', '狀態金額');
+  await page.click('.dialog .btn.primary');
+  await page.waitForSelector('.assets-panel:not([hidden]) .asset-card.image');
+  const bookIdNow = decodeURIComponent((await page.evaluate(() => location.hash)).replace(/^#\/w\//, ''));
+  const chartFileOnDisk = path.join(ws, 'sheets', bookIdNow, 'assets', '狀態金額.svg');
+  const chartSvgText = existsSync(chartFileOnDisk) ? readFileSync(chartFileOnDisk, 'utf8') : '';
+  check('a chart image lands in Assets, drawn from the cells', chartSvgText.startsWith('<svg xmlns') && chartSvgText.includes('500') && (await page.$$('.assets-panel .asset-card.image img')).length >= 1, chartFileOnDisk);
+  check('nothing is placed on the grid', (await page.$$('.chart')).length === 0);
+  await page.click('.assets-actions .btn:has-text("新增筆記")');
+  await page.waitForSelector('.dialog');
+  await page.fill('.dialog input >> nth=0', '預算說明');
+  await page.fill('.dialog textarea', '金額是新台幣，狀態由業務填寫。');
+  await page.click('.dialog .btn.primary');
+  await page.waitForSelector('.assets-panel .asset-card.note[data-name="預算說明.md"]', { timeout: 5000 }).catch(() => {});
+  const noteOnDisk = path.join(ws, 'sheets', bookIdNow, 'assets', '預算說明.md');
+  check('a note is saved as Markdown beside the workbook', (await page.$$('.assets-section .asset-card.note[data-name="預算說明.md"]')).length === 1 && existsSync(noteOnDisk) && readFileSync(noteOnDisk, 'utf8').startsWith('# 預算說明') && readFileSync(noteOnDisk, 'utf8').includes('新台幣'));
+  await shot('13f-assets');
+  await page.click('.assets-head button');
 
   // AutoComplete from the column, and the format painter
   await go('A5');
@@ -631,7 +631,6 @@ const scaleAfter = await page.$$eval('.pane .cell', (cs) => cs.filter((c) => c.s
 check('xlsx round trip keeps data bars and the colour scale', barsAfter === 2 && scaleAfter === 2, `${barsAfter} bars, ${scaleAfter} filled`);
 await go('C2');
 check('xlsx round trip keeps the dropdown list', await page.$eval('.dv-btn', (n) => !n.hidden));
-check('xlsx round trip keeps the chart', (await page.$$('.chart')).length === 1 && (await page.$$('.chart svg path')).length >= 2);
 check('xlsx round trip keeps borders', (await page.$$eval('.pane .cell', (cs) => cs.filter((c) => c.style.boxShadow.includes('inset')).length)) >= 6);
 check('xlsx round trip keeps hidden columns', !(await page.$$eval('.colheads .head', (hs) => hs.map((h) => h.textContent))).includes('D'));
 // Unhide by selecting across the hidden band.
@@ -670,6 +669,22 @@ await typeIn('H2', 'from person');
 await page.waitForTimeout(900);
 const after = JSON.parse(readFileSync(bookFile, 'utf8')).sheets[0].cells;
 check('saves keep the agent edit', after.H1 === 'from agent' && after.H2 === 'from person', JSON.stringify({ H1: after.H1, H2: after.H2 }));
+
+// an older workbook with a chart on its grid is offered the move to Assets
+{
+  const book = JSON.parse(readFileSync(bookFile, 'utf8'));
+  book.sheets[0].charts = [{ id: 'old-1', type: 'pie', range: 'A1:B4', title: 'Legacy pie', x: 600, y: 40, w: 300, h: 200 }];
+  writeFileSync(bookFile, `${JSON.stringify(book, null, 2)}\n`);
+  await page.waitForTimeout(800);
+  await page.reload();
+  await page.waitForSelector('.legacy-charts:not([hidden])', { timeout: 5000 }).catch(() => {});
+  check('a chart left on the grid is offered the move', await page.$eval('.legacy-charts', (n) => !n.hidden && (n.textContent ?? '').includes('1')).catch(() => false));
+  await page.click('.legacy-charts .btn');
+  await page.waitForTimeout(800);
+  const legacySvg = path.join(ws, 'sheets', bookId, 'assets', 'Legacy-pie.svg');
+  const saved = JSON.parse(readFileSync(bookFile, 'utf8'));
+  check('moving it saves an image and clears the grid', existsSync(legacySvg) && !saved.sheets[0].charts && (await page.$$('.chart')).length === 0, legacySvg);
+}
 
 // dark mode
 await page.click('.book-head button[title="主題"]');

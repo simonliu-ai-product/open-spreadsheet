@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assetPath, assetsDir, listAssets, MIME, readAsset, renderChart, saveImage, SHARED, trashAsset, writeNote } from './assets.js';
 import { currentFile, hashOf, ID, listWorkbooks, OpsError, readWorkbook, trashWorkbook, workbookFile, writeWorkbook } from './ops.js';
 
 const CORE = path.dirname(fileURLToPath(import.meta.url));
@@ -49,7 +50,12 @@ export function initWorkspace(dir) {
     )}\n`,
   );
   writeFileSync(path.join(root, 'open-spreadsheet.config.json'), '{}\n');
-  writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.DS_Store\n# workbooks moved to the trash from the viewer or an agent\nsheets/.trash\n');
+  mkdirSync(path.join(root, 'assets'), { recursive: true });
+  writeFileSync(
+    path.join(root, 'assets', 'README.md'),
+    '# Shared notes\n\nMarkdown notes here are context for every workbook in this workspace: what the numbers mean, where they come from, conventions to keep. Agents read them before they work. Images here are shared too.\n',
+  );
+  writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.DS_Store\n# workbooks moved to the trash from the viewer or an agent\nsheets/.trash\n**/assets/.trash\n');
   const agents = readFileSync(path.join(CORE, 'templates', 'AGENTS.md'), 'utf8');
   writeFileSync(path.join(root, 'AGENTS.md'), agents);
   writeFileSync(path.join(root, 'CLAUDE.md'), agents);
@@ -114,7 +120,21 @@ function allowedWrite(req) {
   }
 }
 
-const STATUS = { bad_id: 400, bad_data: 400, bad_json: 422, not_found: 404, exists: 409, conflict: 412 };
+const STATUS = { bad_id: 400, bad_data: 400, bad_json: 422, not_found: 404, exists: 409, conflict: 412, bad_name: 400, bad_range: 400, bad_type: 400, no_sheet: 404, too_big: 413 };
+
+/** A request body as bytes, for image uploads; refused past `max`. */
+const readBytes = (req, max = 15_000_000) =>
+  new Promise((resolve, reject) => {
+    const parts = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > max) reject(new OpsError('too_big', 'An image is at most 15 MB.'));
+      else parts.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(parts)));
+    req.on('error', reject);
+  });
 
 function apiPlugin(root) {
   // Bodies this server just wrote, so its own write does not come back as an outside change.
@@ -123,6 +143,14 @@ function apiPlugin(root) {
     name: 'open-spreadsheet:api',
     configureServer(server) {
       server.watcher.add(path.join(root, 'sheets'));
+      server.watcher.add(path.join(root, 'assets'));
+      // An asset written or removed (by an agent, apply-notes, the CLI): the Assets panel reloads its list.
+      const assetEvent = (file) => {
+        const rel = path.relative(root, file).split(path.sep);
+        const scope = rel[0] === 'assets' && rel.length === 2 ? SHARED : rel[0] === 'sheets' && rel[2] === 'assets' && rel.length === 4 ? rel[1] : null;
+        if (scope) server.ws.send({ type: 'custom', event: 'open-spreadsheet:assets', data: { scope } });
+      };
+      for (const ev of ['add', 'change', 'unlink']) server.watcher.on(ev, assetEvent);
       server.watcher.on('change', (file) => {
         const m = /sheets[\\/]([^\\/]+)[\\/]workbook\.json$/.exec(file);
         if (!m) return;
@@ -179,13 +207,50 @@ function apiPlugin(root) {
             const { id, title, data, from } = JSON.parse(await readBody(req));
             if (!ID.test(id ?? '')) return json(res, 400, { error: 'Use lowercase letters, numbers and dashes.' });
             if (existsSync(workbookFile(root, id))) return json(res, 409, { error: 'That name is taken.' });
+            const fromAssets = from !== undefined && ID.test(from) ? assetsDir(root, from) : null;
             let book = blankWorkbook(title || id);
             if (from !== undefined) book = { ...readWorkbook(root, from).data, ...(title ? { title } : {}) };
             else if (data !== undefined) book = { ...data, title: title || data.title || id };
             const { text } = await writeWorkbook(root, id, book, { create: true });
             ownWrites.set(id, text);
+            if (fromAssets && existsSync(fromAssets)) cpSync(fromAssets, assetsDir(root, id), { recursive: true, filter: (f) => !f.includes(`${path.sep}.trash`) });
             return json(res, 201, { id });
           }
+          // ---------- assets ----------
+          if (url.pathname.startsWith('/__api/assets')) {
+            const scope = url.searchParams.get('scope') ?? '';
+            const name = url.searchParams.get('name') ?? '';
+            if (url.pathname === '/__api/assets' && req.method === 'GET') return json(res, 200, { scope, assets: listAssets(root, scope) });
+            if (url.pathname === '/__api/assets/file' && req.method === 'GET') {
+              const body = readAsset(root, scope, name);
+              const ext = name.split('.').pop().toLowerCase();
+              res.writeHead(200, {
+                'content-type': MIME[ext] ?? 'application/octet-stream',
+                // An SVG or note from the folder is shown, never run: no scripts, no requests, its own origin.
+                'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+                'x-content-type-options': 'nosniff',
+                'cache-control': 'no-store',
+                ...(url.searchParams.has('download') ? { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` } : {}),
+              });
+              return res.end(body);
+            }
+            if (!allowedWrite(req)) return json(res, 403, { error: 'forbidden' });
+            if (url.pathname === '/__api/assets/note' && req.method === 'PUT') {
+              const b = JSON.parse(await readBody(req));
+              return json(res, 200, writeNote(root, b.scope, b.name, b.text));
+            }
+            if (url.pathname === '/__api/assets/upload' && req.method === 'POST') {
+              assetPath(root, scope, name);
+              return json(res, 201, saveImage(root, scope, name, await readBytes(req)));
+            }
+            if (url.pathname === '/__api/assets/chart' && req.method === 'POST') {
+              const b = JSON.parse(await readBody(req));
+              return json(res, 201, await renderChart(root, b.workbook, b));
+            }
+            if (url.pathname === '/__api/assets' && req.method === 'DELETE') return json(res, 200, trashAsset(root, scope, name));
+            return json(res, 404, { error: 'not found' });
+          }
+
           const m = /^\/__api\/workbooks\/([^/]+)$/.exec(url.pathname);
           if (m && ID.test(m[1])) {
             const id = m[1];
