@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "open-spreadsheet": {
+      "command": "npx",
+      "args": ["-y", "-p", "@open-spreadsheet/core@latest", "open-spreadsheet-mcp"]
+    }
+  }
+}

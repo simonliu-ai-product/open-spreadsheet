@@ -1,0 +1,33 @@
+{
+  "name": "@open-spreadsheet/core",
+  "version": "0.1.0",
+  "description": "open-spreadsheet: an Excel-like spreadsheet for agents and people. The dev server, the grid editor and the CLI.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simonliu-ai-product/open-spreadsheet.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/simonliu-ai-product/open-spreadsheet#readme",
+  "bin": {
+    "open-spreadsheet": "./bin.js",
+    "open-spreadsheet-mcp": "./mcp.js"
+  },
+  "dependencies": {
+    "@open-spreadsheet/engine": "workspace:*",
+    "vite": "^7.0.0"
+  },
+  "files": [
+    "bin.js",
+    "mcp.js",
+    "server.js",
+    "ops.js",
+    "app",
+    "skills",
+    "templates"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

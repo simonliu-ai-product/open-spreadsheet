@@ -1,0 +1,16 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "open-spreadsheet",
+  "displayName": "open-spreadsheet",
+  "version": "0.1.0",
+  "description": "Build Excel-like spreadsheets as plain JSON — formulas, number formats, sheets, frozen headers — that people edit in a grid and agents edit as files, in an open-spreadsheet workspace.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Make a monthly budget workbook with totals and a remaining balance",
+    "Add a column to this sheet that shows each row's share of the total",
+    "Check every workbook for broken formulas and fix them"
+  ],
+  "author": { "name": "Simon Liu", "url": "https://github.com/LiuYuWei" },
+  "license": "MIT",
+  "keywords": ["spreadsheet", "excel", "formulas", "xlsx", "csv"]
+}

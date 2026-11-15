@@ -1,0 +1,12 @@
+{
+  "name": "open-spreadsheet",
+  "owner": { "name": "Simon Liu", "url": "https://github.com/LiuYuWei" },
+  "description": "open-spreadsheet — Excel-like spreadsheets as JSON, for coding agents.",
+  "plugins": [
+    {
+      "name": "open-spreadsheet",
+      "source": "./plugins/open-spreadsheet",
+      "description": "Skills and an MCP server for open-spreadsheet workbooks: read and write cells, formulas, formats, sheets, and check for broken formulas."
+    }
+  ]
+}

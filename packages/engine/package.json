@@ -1,0 +1,34 @@
+{
+  "name": "@open-spreadsheet/engine",
+  "version": "0.1.0",
+  "description": "The open-spreadsheet calculation engine: formula parser, dependency graph, recalculation and functions. No runtime dependencies, no DOM.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simonliu-ai-product/open-spreadsheet.git",
+    "directory": "packages/engine"
+  },
+  "homepage": "https://github.com/simonliu-ai-product/open-spreadsheet#readme",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./src/index.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  }
+}
