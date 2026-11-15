@@ -32,6 +32,12 @@ importers:
 
   packages/engine: {}
 
+  packages/open-spreadsheet:
+    dependencies:
+      '@open-spreadsheet/core':
+        specifier: workspace:^
+        version: link:../core
+
 packages:
 
   '@emnapi/core@2.0.0-beta.2':
