@@ -118,6 +118,19 @@ describe('MCP over stdio', () => {
     const gone = await call(18, 'tools/call', { name: 'delete_workbook', arguments: { workbook: 'getting-started-copy' } });
     expect(gone.result.structuredContent.trashedTo).toMatch(/^sheets\/\.trash\/getting-started-copy-/);
     expect(existsSync(path.join(root, 'sheets/getting-started-copy'))).toBe(false);
+    // Protection: set by a person in the file, enforced on every MCP write.
+    const book = JSON.parse(readFileSync(path.join(root, 'sheets/getting-started/workbook.json'), 'utf8'));
+    book.sheets[0].protected = ['A1:B2'];
+    (await import('node:fs')).writeFileSync(path.join(root, 'sheets/getting-started/workbook.json'), JSON.stringify(book));
+    const blocked = await call(20, 'tools/call', { name: 'write_cells', arguments: { workbook: 'getting-started', sheet: 'Costs', cells: { B2: '1' } } });
+    expect(blocked.result.isError).toBe(true);
+    expect(blocked.result.content[0].text).toMatch(/protected/);
+    const styled = await call(21, 'tools/call', { name: 'set_style', arguments: { workbook: 'getting-started', sheet: 'Costs', range: 'A1:C1', style: { b: true } } });
+    expect(styled.result.isError).toBe(true);
+    const outside = await call(22, 'tools/call', { name: 'write_cells', arguments: { workbook: 'getting-started', sheet: 'Costs', cells: { D9: 'ok' } } });
+    expect(outside.result.isError).toBeUndefined();
+    await call(23, 'tools/call', { name: 'insert_rows', arguments: { workbook: 'getting-started', sheet: 'Costs', before: 1, count: 2 } });
+    expect(JSON.parse(readFileSync(path.join(root, 'sheets/getting-started/workbook.json'), 'utf8')).sheets[0].protected).toEqual(['A3:B4']);
     const listed = await call(19, 'tools/call', { name: 'list_workbooks', arguments: {} });
     expect(JSON.stringify(listed.result.structuredContent)).not.toContain('getting-started-copy');
     child.kill();

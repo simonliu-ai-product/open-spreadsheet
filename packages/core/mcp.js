@@ -197,6 +197,34 @@ const TOOLS = [
 
 // ---------- tools ----------
 
+/** Whether a cell lies in a protected range of the sheet. */
+const isProtected = (sheet, row, col) =>
+  (sheet.protected ?? []).some((t) => {
+    const r = parseRange(t);
+    return row >= r.r0 && row <= r.r1 && col >= r.c0 && col <= r.c1;
+  });
+const refuseProtected = (sheet, cells) => {
+  const hit = cells.find((c) => isProtected(sheet, c.row, c.col));
+  if (hit)
+    throw new OpsError(
+      'protected',
+      `${formatA1(hit.row, hit.col)} on ${sheet.name} is in a protected range (${sheet.protected.join(', ')}). Ask the person to unprotect it in the editor; agents cannot change protected cells or remove protection.`,
+    );
+};
+
+/** Refuses a style change on a rectangle that overlaps a protected range. */
+const refuseProtectedRect = (sheet, r) => {
+  const hit = (sheet.protected ?? []).find((t) => {
+    const p = parseRange(t);
+    return p.r0 <= r.r1 && r.r0 <= p.r1 && p.c0 <= r.c1 && r.c0 <= p.c1;
+  });
+  if (hit)
+    throw new OpsError(
+      'protected',
+      `${hit} on ${sheet.name} is protected. Ask the person to unprotect it in the editor; agents cannot change protected cells or remove protection.`,
+    );
+};
+
 const sheetOf = (data, name) => {
   const s = data.sheets.find((x) => x.name === name);
   if (!s) throw new OpsError('no_sheet', `No sheet "${name}". Sheets: ${data.sheets.map((x) => x.name).join(', ')}`);
@@ -248,6 +276,20 @@ function shiftMeta(sheet, axis, at, count) {
   }
   if (axis === 'col' && sheet.cols) sheet.cols = Object.fromEntries(Object.entries(sheet.cols).flatMap(([k, v]) => (move(columnIndex(k)) === null ? [] : [[columnName(move(columnIndex(k))), v]])));
   if (axis === 'row' && sheet.rows) sheet.rows = Object.fromEntries(Object.entries(sheet.rows).flatMap(([k, v]) => (move(Number(k) - 1) === null ? [] : [[String(move(Number(k) - 1) + 1), v]])));
+  if (sheet.protected) {
+    sheet.protected = sheet.protected.flatMap((t) => {
+      const r = parseRange(t);
+      const lo = axis === 'row' ? r.r0 : r.c0;
+      const hi = axis === 'row' ? r.r1 : r.c1;
+      const a = move(lo);
+      const b = move(hi);
+      if (a === null && b === null) return [];
+      const n = axis === 'row' ? { ...r, r0: a ?? at, r1: b ?? at - 1 } : { ...r, c0: a ?? at, c1: b ?? at - 1 };
+      if (n.r1 < n.r0 || n.c1 < n.c0) return [];
+      return [n.r0 === n.r1 && n.c0 === n.c1 ? formatA1(n.r0, n.c0) : `${formatA1(n.r0, n.c0)}:${formatA1(n.r1, n.c1)}`];
+    });
+    if (!sheet.protected.length) delete sheet.protected;
+  }
   if (sheet.merges) {
     sheet.merges = sheet.merges.flatMap((m) => {
       const r = parseRange(m);
@@ -275,13 +317,14 @@ async function callTool(root, name, a) {
       return traceCell(readWorkbook(root, a.workbook).data, a.sheet, a.address);
     case 'write_cells':
       return mutate(root, a.workbook, a.expected_hash, (data, wb) => {
-        sheetOf(data, a.sheet);
+        const target = sheetOf(data, a.sheet);
         const cells = Object.entries(a.cells ?? {}).map(([addr, input]) => {
           const p = parseA1(addr);
           if (!p) throw new OpsError('bad_address', `Not an A1 address: ${addr}`);
           if (input !== null && typeof input !== 'string') throw new OpsError('bad_input', `${addr}: inputs are strings, e.g. "${input}"`);
           return { ...p, input: input ?? '' };
         });
+        refuseProtected(target, cells);
         wb.setCells(a.sheet, cells);
         const values = Object.fromEntries(cells.map((c) => [formatA1(c.row, c.col), wb.value(a.sheet, c.row, c.col)?.toString?.() ?? null]));
         return { written: cells.length, values };
@@ -290,6 +333,7 @@ async function callTool(root, name, a) {
       return mutate(root, a.workbook, a.expected_hash, (data) => {
         const sheet = sheetOf(data, a.sheet);
         const r = parseRange(a.range);
+        refuseProtectedRect(sheet, r);
         sheet.styles ??= {};
         for (let row = r.r0; row <= r.r1; row++) {
           for (let col = r.c0; col <= r.c1; col++) {
@@ -391,8 +435,10 @@ async function callTool(root, name, a) {
       });
     case 'delete_sheet':
       return mutate(root, a.workbook, a.expected_hash, (data, wb) => {
-        sheetOf(data, a.sheet);
+        const doomed = sheetOf(data, a.sheet);
         if (data.sheets.length === 1) throw new OpsError('last_sheet', 'A workbook needs at least one sheet.');
+        if (doomed.protected?.length)
+          throw new OpsError('protected', `${a.sheet} has protected ranges (${doomed.protected.join(', ')}). Ask the person to unprotect them in the editor before it can be deleted.`);
         wb.removeSheet(a.sheet);
         data.sheets = data.sheets.filter((s) => s.name !== a.sheet);
       });

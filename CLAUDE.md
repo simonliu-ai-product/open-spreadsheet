@@ -8,7 +8,7 @@
 pnpm test        # 引擎測試（vitest）
 pnpm typecheck   # engine + core/app
 pnpm bench       # 重算效能
-node scripts/ui-e2e.mjs <輸出資料夾>   # Chromium 端對端檢查（95 項）＋截圖
+node scripts/ui-e2e.mjs <輸出資料夾>   # Chromium 端對端檢查（99 項）＋截圖
 # 在工作區內（例如 ../playground/open-spreadsheet-sample）
 pnpm dev         # open-spreadsheet dev，預設 port 5373
 ```

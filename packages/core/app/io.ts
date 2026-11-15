@@ -5,7 +5,7 @@
  */
 import { CellError, columnIndex, columnName, formatA1, formatValue, impliedFormat, offsetFormula, parseA1, type Scalar, Workbook } from '@open-spreadsheet/engine';
 import { chartShape } from './charts.ts';
-import { BLANK, columnValues, filteredRows, parseRange } from './features.ts';
+import { BLANK, columnValues, filteredRows, parseRange, iconCount } from './features.ts';
 import type { CellStyle, ChartSpec, ChartType, ConditionalRule, HighlightStyle, SheetData, WorkbookData } from './types.ts';
 
 // ---------- CSV ----------
@@ -255,6 +255,16 @@ export function exportXlsx(data: WorkbookData, wb: Workbook): Blob {
       }
       case 'dataBar':
         return `<cfRule type="dataBar" priority="${priority}"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="${argb(r.color ?? '#638ec6')}"/></dataBar></cfRule>`;
+      case 'top':
+        return `<cfRule type="top10" dxfId="${dxfId(r.style)}" priority="${priority}" rank="${Math.max(1, Math.floor(r.rank))}"${r.percent ? ' percent="1"' : ''}${r.bottom ? ' bottom="1"' : ''}/>`;
+      case 'average':
+        return `<cfRule type="aboveAverage" dxfId="${dxfId(r.style)}" priority="${priority}"${r.below ? ' aboveAverage="0"' : ''}${r.equal ? ' equalAverage="1"' : ''}/>`;
+      case 'iconSet': {
+        const count = iconCount(r.set);
+        const cuts = r.thresholds?.length === count - 1 ? r.thresholds : Array.from({ length: count - 1 }, (_, i) => Math.round(((i + 1) * 100) / count));
+        const set = /^[3-5][A-Za-z0-9]+$/.test(r.set) ? r.set : '3TrafficLights1';
+        return `<cfRule type="iconSet" priority="${priority}"><iconSet iconSet="${set}"${r.reverse ? ' reverse="1"' : ''}><cfvo type="percent" val="0"/>${cuts.map((c) => `<cfvo type="percent" val="${c}"/>`).join('')}</iconSet></cfRule>`;
+      }
       default:
         return `<cfRule type="cellIs" dxfId="${dxfId(r.style)}" priority="${priority}" operator="${OPS[r.type]}"><formula>${xml(literal(r.value))}</formula></cfRule>`;
     }
@@ -713,6 +723,36 @@ function readRules(doc: Document, sheet: SheetData, dxfs: HighlightStyle[]): voi
           if (colors.length >= 2) conditional.push({ range, type: 'colorScale', colors });
         } else if (type === 'dataBar') {
           conditional.push({ range, type: 'dataBar', color: rgbOf(first(rule, 'color')) ?? '#638ec6' });
+        } else if (type === 'top10') {
+          conditional.push({
+            range,
+            type: 'top',
+            rank: Number(rule.getAttribute('rank') ?? 10) || 10,
+            ...(rule.getAttribute('percent') === '1' ? { percent: true } : {}),
+            ...(rule.getAttribute('bottom') === '1' ? { bottom: true } : {}),
+            style,
+          });
+        } else if (type === 'aboveAverage') {
+          conditional.push({
+            range,
+            type: 'average',
+            ...(rule.getAttribute('aboveAverage') === '0' ? { below: true } : {}),
+            ...(rule.getAttribute('equalAverage') === '1' ? { equal: true } : {}),
+            style,
+          });
+        } else if (type === 'iconSet') {
+          const is = first(rule, 'iconSet');
+          const set = is?.getAttribute('iconSet') ?? '3TrafficLights1';
+          // Only percent thresholds carry over; other kinds fall back to even steps.
+          const cfvos = is ? tags(is, 'cfvo') : [];
+          const thresholds = cfvos.slice(1).map((c) => (c.getAttribute('type') === 'percent' ? Number(c.getAttribute('val')) : Number.NaN));
+          conditional.push({
+            range,
+            type: 'iconSet',
+            set,
+            ...(thresholds.length === iconCount(set) - 1 && thresholds.every(Number.isFinite) ? { thresholds } : {}),
+            ...(is?.getAttribute('reverse') === '1' ? { reverse: true } : {}),
+          });
         }
       }
     }

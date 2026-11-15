@@ -27,6 +27,22 @@ export const inRect = (r: Rect, row: number, col: number) => row >= r.r0 && row 
  * A range after `count` rows or columns are inserted before `at` (negative:
  * deleted): it grows, shrinks or moves; null when every cell of it is gone.
  */
+/** Whether a cell lies in one of the sheet's protected ranges. */
+export function isProtectedCell(sheet: SheetData, row: number, col: number): boolean {
+  return (sheet.protected ?? []).some((t) => {
+    const r = parseRange(t);
+    return r !== null && row >= r.r0 && row <= r.r1 && col >= r.c0 && col <= r.c1;
+  });
+}
+
+/** Whether any cell of a rectangle is protected. */
+export function touchesProtected(sheet: SheetData, rect: { r0: number; c0: number; r1: number; c1: number }): boolean {
+  return (sheet.protected ?? []).some((t) => {
+    const r = parseRange(t);
+    return r !== null && r.r0 <= rect.r1 && rect.r0 <= r.r1 && r.c0 <= rect.c1 && rect.c0 <= r.c1;
+  });
+}
+
 export function shiftRange(text: string, axis: 'row' | 'col', at: number, count: number): string | null {
   const m = parseRange(text);
   if (!m) return null;
@@ -57,6 +73,35 @@ export interface CellLook {
   b?: boolean;
   /** A data bar: how far it reaches (0–1) and its colour. */
   bar?: { pct: number; color: string };
+  /** An icon-set icon: the glyph and its colour. */
+  icon?: { glyph: string; color: string };
+}
+
+/** How many icons a set has: "3Arrows" → 3. */
+export const iconCount = (set: string) => Math.min(5, Math.max(3, Number(/^(\d)/.exec(set)?.[1] ?? 3)));
+
+/**
+ * The glyph for level `i` (0 = lowest) of an icon set, drawn as text so it needs
+ * no image: arrows, lights, symbols, flags, ratings and the rest by family.
+ */
+export function iconGlyph(set: string, i: number, n: number): { glyph: string; color: string } {
+  const red = '#d93025';
+  const amber = '#f9ab00';
+  const green = '#1e8e3e';
+  const grey = '#80868b';
+  const traffic = n === 3 ? [red, amber, green] : n === 4 ? ['#202124', red, amber, green] : [red, '#e37400', amber, '#7cb342', green];
+  const name = set.replace(/^\d/, '');
+  if (/Arrows/.test(name)) {
+    const glyphs = n === 3 ? ['↓', '→', '↑'] : n === 4 ? ['↓', '↘', '↗', '↑'] : ['↓', '↘', '→', '↗', '↑'];
+    return { glyph: glyphs[i]!, color: /Gray/.test(name) ? grey : traffic[i]! };
+  }
+  if (/Traffic|Signs/.test(name)) return { glyph: '●', color: traffic[i]! };
+  if (/Symbols/.test(name)) return { glyph: ['✖', '!', '✔'][Math.min(2, Math.round((i * 2) / (n - 1)))]!, color: [red, amber, green][Math.min(2, Math.round((i * 2) / (n - 1)))]! };
+  if (/Flags/.test(name)) return { glyph: '⚑', color: [red, amber, green][Math.min(2, Math.round((i * 2) / (n - 1)))]! };
+  if (/Stars/.test(name)) return { glyph: ['☆', '⯪', '★'][Math.min(2, i)]!, color: amber };
+  if (/Rating|Quarters|Boxes|Triangles/.test(name)) return { glyph: ['○', '◔', '◑', '◕', '●'][Math.round((i * 4) / (n - 1))]!, color: '#1a73e8' };
+  if (/RedToBlack/.test(name)) return { glyph: '●', color: ['#202124', grey, '#f28b82', red][Math.min(3, i)]! };
+  return { glyph: '●', color: traffic[i]! };
 }
 
 const hex = (c: string) => {
@@ -88,7 +133,7 @@ export function conditionalLook(sheet: SheetData, value: (row: number, col: numb
       let max = -Infinity;
       const nums: number[] = [];
       const counts = new Map<string, number>();
-      if (rule.type === 'colorScale' || rule.type === 'dataBar' || rule.type === 'duplicate') {
+      if (rule.type === 'colorScale' || rule.type === 'dataBar' || rule.type === 'duplicate' || rule.type === 'top' || rule.type === 'average' || rule.type === 'iconSet') {
         for (let row = rect.r0; row <= rect.r1; row++) {
           for (let col = rect.c0; col <= rect.c1; col++) {
             const v = value(row, col);
@@ -107,17 +152,38 @@ export function conditionalLook(sheet: SheetData, value: (row: number, col: numb
       }
       nums.sort((a, b) => a - b);
       const mid = nums.length ? nums[Math.floor((nums.length - 1) / 2)]! : 0;
-      return { rule, rect, min, max, mid, counts };
+      const mean = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+      // The value a Top/Bottom rule cuts at: the rank-th from the top (or bottom).
+      let cut = Number.NaN;
+      if (rule.type === 'top' && nums.length) {
+        const k = Math.max(1, rule.percent ? Math.floor((nums.length * rule.rank) / 100) : Math.floor(rule.rank));
+        cut = rule.bottom ? nums[Math.min(k, nums.length) - 1]! : nums[Math.max(0, nums.length - k)]!;
+      }
+      return { rule, rect, min, max, mid, counts, mean, cut };
     })
     .filter((x) => x !== null);
   if (!rules.length) return () => null;
 
   return (row, col) => {
     let look: CellLook | null = null;
-    for (const { rule, rect, min, max, mid, counts } of rules) {
+    for (const { rule, rect, min, max, mid, counts, mean, cut } of rules) {
       if (!inRect(rect, row, col)) continue;
       const v = value(row, col);
       if (v === null || v === '') continue;
+      const n = asNumber(v);
+      if (rule.type === 'top' && (n === null || Number.isNaN(cut) || (rule.bottom ? n > cut : n < cut))) continue;
+      if (rule.type === 'average' && (n === null || (rule.below ? (rule.equal ? n > mean : n >= mean) : rule.equal ? n < mean : n <= mean))) continue;
+      if (rule.type === 'iconSet') {
+        if (n === null || !Number.isFinite(min)) continue;
+        const count = iconCount(rule.set);
+        const cuts = rule.thresholds?.length === count - 1 ? rule.thresholds : Array.from({ length: count - 1 }, (_, i) => Math.round(((i + 1) * 100) / count));
+        const pct = max === min ? 100 : ((n - min) / (max - min)) * 100;
+        let level = cuts.filter((c) => pct >= c).length;
+        if (rule.reverse) level = count - 1 - level;
+        look ??= {};
+        look.icon = iconGlyph(rule.set, level, count);
+        continue;
+      }
       const hit = test(rule, v, counts);
       if (hit === false) continue;
       look ??= {};

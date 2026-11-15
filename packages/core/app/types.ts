@@ -24,6 +24,11 @@ export interface SheetData {
   name: string;
   /** What was typed, by A1 address: "120", "=SUM(B2:B3)". */
   cells: Record<string, string>;
+  /**
+   * Protected ranges ("A1:D1"): their contents and formats cannot be changed
+   * from the editor or by an agent through MCP until a person unprotects them.
+   */
+  protected?: string[];
   /** Column widths in px by column letter. */
   cols?: Record<string, number>;
   /** Row heights in px by 1-based row number. */
@@ -59,7 +64,17 @@ export type ConditionalRule =
   | { range: string; type: 'duplicate'; style?: HighlightStyle }
   /** Two or three colours, from the smallest number to the largest. */
   | { range: string; type: 'colorScale'; colors: string[] }
-  | { range: string; type: 'dataBar'; color?: string };
+  | { range: string; type: 'dataBar'; color?: string }
+  /** Excel's Top/Bottom N (or N percent) items. */
+  | { range: string; type: 'top'; rank: number; percent?: boolean; bottom?: boolean; style?: HighlightStyle }
+  /** Above (or below) the range's average; `equal` counts the average itself. */
+  | { range: string; type: 'average'; below?: boolean; equal?: boolean; style?: HighlightStyle }
+  /**
+   * An icon per cell by where its number falls between the range's smallest and
+   * largest: Excel's icon sets, e.g. "3Arrows", "3TrafficLights1", "4Rating", "5Arrows".
+   * `thresholds` are the percents between icons (3 icons → [33, 67]).
+   */
+  | { range: string; type: 'iconSet'; set: string; thresholds?: number[]; reverse?: boolean };
 
 export interface Validation {
   range: string;

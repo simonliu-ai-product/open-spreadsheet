@@ -271,7 +271,9 @@ export function checkWorkbook(data) {
     for (const a of Object.keys(s.styles ?? {})) if (!parseA1(a)) add('warning', s.name, a, 'Style on something that is not an A1 address.');
     for (const rule of s.conditional ?? []) {
       if (!parseRange(rule.range ?? '')) add('error', s.name, rule.range ?? '', 'A conditional format needs a range like B2:B20.');
-      if (!['gt', 'lt', 'ge', 'le', 'eq', 'ne', 'between', 'contains', 'duplicate', 'colorScale', 'dataBar'].includes(rule.type)) add('error', s.name, rule.range ?? '', `Unknown conditional format type "${rule.type}".`);
+      if (!['gt', 'lt', 'ge', 'le', 'eq', 'ne', 'between', 'contains', 'duplicate', 'colorScale', 'dataBar', 'top', 'average', 'iconSet'].includes(rule.type)) add('error', s.name, rule.range ?? '', `Unknown conditional format type "${rule.type}".`);
+      if (rule.type === 'top' && !(Number(rule.rank) >= 1)) add('error', s.name, rule.range ?? '', 'A top/bottom rule needs a rank of 1 or more.');
+      if (rule.type === 'iconSet' && !/^[3-5][A-Za-z0-9]+$/.test(rule.set ?? '')) add('error', s.name, rule.range ?? '', 'An icon set is named like Excel\'s: "3Arrows", "3TrafficLights1", "5Rating".');
     }
     for (const v of s.validation ?? []) {
       if (!parseRange(v.range ?? '')) add('error', s.name, v.range ?? '', 'A validation rule needs a range.');
@@ -287,6 +289,7 @@ export function checkWorkbook(data) {
       if (!parseA1(a)) add('warning', s.name, a, 'Note on something that is not an A1 address.');
       else if (typeof t !== 'string') add('error', s.name, a, 'A note is a string.');
     }
+    for (const t of s.protected ?? []) if (!parseRange(t)) add('error', s.name, t, 'Not a protected range like A1:D1 or B2.');
     const merges = (s.merges ?? []).map((m) => ({ m, r: parseRange(m) }));
     for (const { m, r } of merges) if (!r || !m.includes(':')) add('error', s.name, m, 'Not a merge range like A1:C1.');
     for (let i = 0; i < merges.length; i++)

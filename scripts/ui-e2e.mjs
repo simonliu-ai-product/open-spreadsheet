@@ -555,6 +555,25 @@ await go('B5');
   await shot('13i-checkbox');
   await page.keyboard.press('Space');
   check('Space ticks them all, then clears them all', allOn === 'true,true,true' && (await boxes()) === 'false,false,false', `${allOn} then ${await boxes()}`);
+  // protection: a protected range refuses typing and clearing until unprotected
+  await typeIn('AB1', '鎖住');
+  await go('AB1:AB2');
+  await palette('保護範圍');
+  check('protected cells show as locked', (await page.$$('.pane .cell.locked')).length >= 2);
+  await go('AB1');
+  await page.keyboard.type('x');
+  await page.keyboard.press('Enter');
+  const refusedTyping = (await page.textContent('.toast')) ?? '';
+  await go('AB1');
+  check('typing into a protected cell is refused', (await bar()) === '鎖住' && refusedTyping.includes('受保護'), `${await bar()} | ${refusedTyping}`);
+  await page.keyboard.press('Delete');
+  await go('AB1');
+  check('clearing a protected cell is refused', (await bar()) === '鎖住', await bar());
+  await go('AB1:AB2');
+  await palette('取消保護');
+  await typeIn('AB1', '解開');
+  await go('AB1');
+  check('unprotecting lets the cell change again', (await bar()) === '解開' && (await page.$$('.pane .cell.locked')).length === 0, await bar());
   // show formulas (⌃`) and error checking
   await go('J5');
   await page.keyboard.press('Control+Backquote');

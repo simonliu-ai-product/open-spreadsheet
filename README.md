@@ -19,6 +19,8 @@ No spreadsheet library underneath. The engine (`packages/engine`, zero dependenc
 - Sheet tabs: add, rename (double-click), duplicate, delete, reorder by dragging, tab colours.
 - Defined names (`=SUM(Sales)`): define from the selection, a name manager, the name box jumps to a name, formula autocomplete offers names; they follow inserted rows and renamed sheets, and travel in .xlsx.
 - Trace precedents and dependents, as Excel: dashed boxes and arrows show what a formula reads or which formulas read a cell, names resolved; a list names each one, other sheets included, and jumps to it. Esc or an edit removes the arrows.
+- Conditional formats from Excel files: besides comparisons, text, duplicates, colour scales and data bars, a workbook's Top/Bottom N, above/below average and icon sets (arrows, traffic lights, symbols, flags, ratings) show in the grid and survive the round trip to .xlsx.
+- Protected ranges: lock cells from the right-click menu or ⌘K; typing, pasting, clearing, filling, sorting and formatting into them are refused — and so are MCP writes, so an agent cannot change what a person locked.
 - Checkboxes over TRUE/FALSE cells: insert from the right-click menu or ⌘K, click to tick, Space flips the selection; formulas such as `=COUNTIF(B2:B9, TRUE)` count them.
 - Links: a typed web or mail address, or `=HYPERLINK(url, name)`, shows as a link; ⌘-click or *Open link* opens it (http, https and mailto only).
 - Vertical alignment (top / middle / bottom) from the right-click menu or ⌘K, kept in .xlsx and print.

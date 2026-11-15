@@ -34,10 +34,11 @@ Each workbook is `sheets/<id>/workbook.json`. The grid editor at `pnpm dev` relo
 | `freeze` | `{ rows, cols }` frozen at the top and left |
 | `hiddenRows` / `hiddenCols` | Rows (1-based numbers) and columns (letters) hidden by hand |
 | `names` (top level, beside `sheets`) | Defined names: `{ "Sales": "Orders!$F$2:$F$200" }`, used in formulas as `=SUM(Sales)`; each points at a cell or range with its sheet |
+| `protected` | Ranges a person locked, `["A1:D1", "F2"]`. The editor and MCP refuse to change them; never edit or remove them yourself — ask the person |
 | `charts` | Charts over the grid: `[{ "id": "sales", "type": "bar", "range": "A1:C13", "title": "Sales by month", "x": 520, "y": 0, "w": 440, "h": 270 }]` — `type` is `bar`, `line` or `pie`; the range's first column holds the categories and its first row the series names; `x`/`y`/`w`/`h` are px at 100% zoom from the sheet's top-left |
 | `color` | The sheet tab's colour |
 | `notes` | A1 address → a note left on the cell (see the `apply-notes` skill) |
-| `conditional` | Conditional formats, later ones win: `{ "range": "D2:D50", "type": "gt", "value": 10000, "style": { "bg": "#ffc7ce", "color": "#9c0006" } }`; types `gt lt ge le eq ne` (value), `between` (value, value2), `contains` (text), `duplicate`, `colorScale` (`colors`: 2 or 3 hex, low → high), `dataBar` (`color`) |
+| `conditional` | Conditional formats, later ones win: `{ "range": "D2:D50", "type": "gt", "value": 10000, "style": { "bg": "#ffc7ce", "color": "#9c0006" } }`; types `gt lt ge le eq ne` (value), `between` (value, value2), `contains` (text), `duplicate`, `colorScale` (`colors`: 2 or 3 hex, low → high), `dataBar` (`color`), `top` (`rank`, optional `percent`, `bottom`), `average` (optional `below`, `equal`), `iconSet` (`set` as Excel names it — `3Arrows`, `3TrafficLights1`, `4Rating`, `5Arrows`…; optional `thresholds` in percent, `reverse`). All of them go to and from .xlsx |
 | `validation` | Dropdown lists: `[{ "range": "C2:C100", "list": ["Open", "In progress", "Done"] }]`; other input is refused in the editor |
 | `filter` | An autofilter: `{ "range": "A1:F200" }` (header row first); `hidden` maps a column letter to the shown values it hides |
 

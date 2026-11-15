@@ -229,6 +229,9 @@ kbd { font: 10.5px var(--mono); color: var(--muted-foreground); border: 1px soli
 .cell.i { font-style: italic; }
 .cell.err { color: var(--error); }
 .cell.link { color: var(--link, #1a73e8); }
+.cell .cf-icon { flex: none; margin-right: auto; padding-right: calc(4px * var(--z)); font-size: 0.95em; line-height: 1; }
+.cell.a-left .cf-icon { margin-right: calc(4px * var(--z)); }
+.cell.locked { background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--cell-fg) 6%, transparent) 6px 7px); }
 .cell .cb { width: calc(14px * var(--z)); height: calc(14px * var(--z)); border: 1.5px solid var(--muted-foreground); border-radius: 3px; display: inline-grid; place-items: center; cursor: pointer; flex: none; }
 .cell .cb.on { background: var(--link, #1a73e8); border-color: var(--link, #1a73e8); color: #fff; }
 .cell .cb svg { width: 100%; height: 100%; }

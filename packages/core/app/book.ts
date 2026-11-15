@@ -18,7 +18,7 @@ import {
   parseFormula,
   type Node as FormulaNode,
 } from '@open-spreadsheet/engine';
-import { BLANK, columnValues, conditionalLook, type CellLook, DEFAULT_HIGHLIGHT, filteredRows, shiftRange, validationAt } from './features.ts';
+import { isProtectedCell, touchesProtected, BLANK, columnValues, conditionalLook, type CellLook, DEFAULT_HIGHLIGHT, filteredRows, shiftRange, validationAt } from './features.ts';
 import { chartData, chartSvg } from './charts.ts';
 import { printHtml } from './print.ts';
 import { api } from './home.ts';
@@ -526,7 +526,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
         }
         const input = wb.inputAt(name, r, c);
         const style = styleAt(r, c);
-        if (!input && !style?.bg && !style?.border && !style?.check && !noteAt(r, c) && !isFilterHead(r, c)) continue;
+        if (!input && !style?.bg && !style?.border && !style?.check && !noteAt(r, c) && !isFilterHead(r, c) && !isProtectedCell(sheet(), r, c)) continue;
         let w = colX[c + 1]! - colX[c]!;
         const s = input ? show(r, c) : null;
         const isText = s && (typeof s.v === 'string' || s.v === null) && !style?.wrap && (style?.align ?? 'left') === 'left';
@@ -617,6 +617,11 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       if (look.bg) d.style.background = look.bg;
       if (look.color) d.style.color = look.color;
       if (look.b) d.classList.add('b');
+      if (look.icon) {
+        const ic = el('span', 'cf-icon', look.icon.glyph);
+        ic.style.color = look.icon.color;
+        d.prepend(ic);
+      }
       if (look.bar) {
         const bar = el('span', 'data-bar');
         bar.style.width = `${Math.round(look.bar.pct * 100)}%`;
@@ -632,6 +637,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       d.classList.add('filter-head');
     }
     if (merged || spills) d.classList.add('solid');
+    if (isProtectedCell(sheet(), row, col)) d.classList.add('locked');
     if (noteAt(row, col)) {
       const mark = el('span', 'note-mark');
       // On a spilling cell the mark belongs to the cell's own corner, not the spill's.
@@ -1057,6 +1063,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
         if (s.hiddenRows?.length) out.hiddenRows = s.hiddenRows;
         if (s.hiddenCols?.length) out.hiddenCols = s.hiddenCols;
         if (s.charts?.length) out.charts = s.charts;
+        if (s.protected?.length) out.protected = s.protected;
         return out;
       }),
     };
@@ -1132,9 +1139,21 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     }
   }
   /** Every change: undo point, the change, then layout, paint and save. */
+  /** Thrown by a write into a protected range; `change` undoes the whole step and says why. */
+  class LockedError extends Error {}
   function change(fn: () => void, opts: { relayout?: boolean } = {}) {
     checkpoint();
-    fn();
+    try {
+      fn();
+    } catch (e) {
+      if (!(e instanceof LockedError)) throw e;
+      const before = undoStack.pop();
+      if (before) restore(before);
+      layout();
+      render();
+      toast(T.protectedRefused);
+      return;
+    }
     if (opts.relayout !== false) layout();
     render();
     save();
@@ -1143,6 +1162,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   // ---------- cell edits ----------
   const name = () => sname();
   function setInputs(cells: { row: number; col: number; input: string }[]) {
+    if (cells.some((c) => isProtectedCell(sheet(), c.row, c.col))) throw new LockedError();
     wb.setCells(name(), cells);
   }
   function forEachCell(r: Rect, fn: (row: number, col: number) => void) {
@@ -1152,6 +1172,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     for (let row = r.r0; row <= r1; row++) for (let col = r.c0; col <= c1; col++) fn(row, col);
   }
   function setStyle(r: Rect, patch: Partial<CellStyle> | null) {
+    if (touchesProtected(sheet(), r)) throw new LockedError();
     const sh = sheet();
     sh.styles ??= {};
     for (let row = r.r0; row <= r.r1; row++) {
@@ -1178,6 +1199,38 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     const on = !styleAt(active.row, active.col)?.[k];
     change(() => setStyle(styleRect(), { [k]: on }), { relayout: false });
   }
+  // ---------- protection ----------
+  /** Protects the selection: one range added, the ones it covers folded in. */
+  function protectSelection() {
+    const s = selection();
+    const text = rangeText(s);
+    checkpoint();
+    const sh = sheet();
+    const rest = (sh.protected ?? []).filter((t) => {
+      const r = parseRange(t);
+      return !(r && r.r0 >= s.r0 && r.r1 <= s.r1 && r.c0 >= s.c0 && r.c1 <= s.c1);
+    });
+    sh.protected = [...rest, text];
+    render();
+    save();
+    toast(T.protectedOn(text));
+  }
+  /** Removes every protected range that touches the selection. */
+  function unprotectSelection() {
+    const s = selection();
+    const sh = sheet();
+    const keep = (sh.protected ?? []).filter((t) => {
+      const r = parseRange(t);
+      return !(r && r.r0 <= s.r1 && s.r0 <= r.r1 && r.c0 <= s.c1 && s.c0 <= r.c1);
+    });
+    if (keep.length === (sh.protected ?? []).length) return;
+    checkpoint();
+    sh.protected = keep.length ? keep : undefined;
+    render();
+    save();
+    toast(T.protectedOff);
+  }
+
   // ---------- checkboxes ----------
   const isCheck = (row: number, col: number) => Boolean(styleAt(row, col)?.check);
   /**
@@ -1255,6 +1308,11 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   // ---------- editing ----------
   const draft = () => (editing?.source === 'bar' ? finput.value : editor.value);
   function beginEdit(mode: 'enter' | 'edit', initial?: string, source: 'cell' | 'bar' = 'cell') {
+    if (isProtectedCell(sheet(), active.row, active.col)) {
+      // The key that tried to start the edit is already in the editor; drop it so it cannot reach a later edit.
+      editor.value = '';
+      return void toast(T.protectedRefused);
+    }
     const m = mergeOf(active.row, active.col);
     if (m) {
       active = { row: m.r0, col: m.c0 };
@@ -1756,6 +1814,13 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       const range = shiftRange(r.range, axis, at, count);
       return range ? [{ ...r, range }] : [];
     });
+    if (sh.protected) {
+      sh.protected = sh.protected.flatMap((t) => {
+        const range = shiftRange(t, axis, at, count);
+        return range ? [range] : [];
+      });
+      if (!sh.protected.length) sh.protected = undefined;
+    }
     if (sh.validation) sh.validation = sh.validation.flatMap((v) => {
       const range = shiftRange(v.range, axis, at, count);
       return range ? [{ ...v, range }] : [];
@@ -1811,6 +1876,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     });
   }
   function deleteRows(r0: number, r1: number) {
+    if (touchesProtected(sheet(), { r0, c0: 0, r1, c1: MAX_COLS })) return toast(T.protectedRefused);
     change(() => {
       wb.insertRows(name(), r0, -(r1 - r0 + 1));
       shiftMeta('row', r0, -(r1 - r0 + 1));
@@ -1818,6 +1884,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     moveTo({ row: r0, col: active.col });
   }
   function deleteCols(c0: number, c1: number) {
+    if (touchesProtected(sheet(), { r0: 0, c0, r1: MAX_ROWS, c1 })) return toast(T.protectedRefused);
     change(() => {
       wb.insertColumns(name(), c0, -(c1 - c0 + 1));
       shiftMeta('col', c0, -(c1 - c0 + 1));
@@ -2251,6 +2318,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       { label: T.validation, icon: 'listCheck', action: () => void editValidation() },
       isCheck(active.row, active.col) ? { label: T.removeCheckbox, icon: 'check', action: removeCheckboxes } : { label: T.insertCheckbox, icon: 'check', action: insertCheckboxes },
       { label: T.defineName, icon: 'pencil', action: () => void defineName() },
+      touchesProtected(sheet(), selection()) ? { label: T.unprotectRange, icon: 'eye', action: unprotectSelection } : { label: T.protectRange, icon: 'eyeOff', action: protectSelection },
       ...(linkAt(active.row, active.col) ? [{ label: T.openLink, icon: 'arrowRight', action: () => openLink(linkAt(active.row, active.col)!) }] : []),
       { label: T.tracePrecedents, icon: 'arrowRight', disabled: !wb.inputAt(sname(), active.row, active.col).startsWith('='), action: () => traceCells('pre') },
       { label: T.traceDependents, icon: 'arrowLeft', action: () => traceCells('dep') },
@@ -3341,6 +3409,8 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       ...['SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN'].map((f) => cmd(T.autosum, `${f}( )`, () => autosum(f), 'sigma', undefined, `autosum ${f.toLowerCase()}`)),
       cmd(T.gFormat, T.bold, () => toggleStyle('b'), 'bold', `${MOD}B`, 'bold'),
       cmd(T.gEdit, T.insertCheckbox, insertCheckboxes, 'check', undefined, 'checkbox tick box todo'),
+      cmd(T.gEdit, T.protectRange, protectSelection, 'eyeOff', undefined, 'protect lock range read only'),
+      cmd(T.gEdit, T.unprotectRange, unprotectSelection, 'eye', undefined, 'unprotect unlock range'),
       cmd(T.gEdit, T.removeCheckbox, removeCheckboxes, 'check', undefined, 'checkbox remove'),
       ...(['top', 'middle', 'bottom'] as const).map((v) => cmd(T.gFormat, `${T.valign}：${T[`valign_${v}`]}`, () => setValign(v), 'alignCenter', undefined, `vertical align ${v}`)),
       cmd(T.gFormat, T.italic, () => toggleStyle('i'), 'italic', `${MOD}I`, 'italic'),
