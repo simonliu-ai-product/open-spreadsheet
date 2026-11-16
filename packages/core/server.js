@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assetPath, assetsDir, listAssets, MIME, readAsset, renderChart, saveImage, SHARED, trashAsset, writeNote } from './assets.js';
+import { assetPath, assetsDir, listAssets, MIME, readAsset, readChartStyles, readFavorites, renameAsset, renderChart, saveImage, setFavorite, SHARED, trashAsset, writeChartStyles, writeNote } from './assets.js';
 import { currentFile, hashOf, ID, listWorkbooks, OpsError, readWorkbook, trashWorkbook, workbookFile, writeWorkbook } from './ops.js';
 
 const CORE = path.dirname(fileURLToPath(import.meta.url));
@@ -55,7 +55,7 @@ export function initWorkspace(dir) {
     path.join(root, 'assets', 'README.md'),
     '# Shared notes\n\nMarkdown notes here are context for every workbook in this workspace: what the numbers mean, where they come from, conventions to keep. Agents read them before they work. Images here are shared too.\n',
   );
-  writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.DS_Store\n# workbooks moved to the trash from the viewer or an agent\nsheets/.trash\n**/assets/.trash\n');
+  writeFileSync(path.join(root, '.gitignore'), 'node_modules\n.DS_Store\n# workbooks moved to the trash from the viewer or an agent\nsheets/.trash\n**/assets/.trash\n# your own picks, such as favourite notes\n.open-spreadsheet/\n');
   const agents = readFileSync(path.join(CORE, 'templates', 'AGENTS.md'), 'utf8');
   writeFileSync(path.join(root, 'AGENTS.md'), agents);
   writeFileSync(path.join(root, 'CLAUDE.md'), agents);
@@ -120,7 +120,7 @@ function allowedWrite(req) {
   }
 }
 
-const STATUS = { bad_id: 400, bad_data: 400, bad_json: 422, not_found: 404, exists: 409, conflict: 412, bad_name: 400, bad_range: 400, bad_type: 400, no_sheet: 404, too_big: 413 };
+const STATUS = { bad_id: 400, bad_data: 400, bad_json: 422, not_found: 404, exists: 409, conflict: 412, bad_name: 400, bad_range: 400, bad_type: 400, no_sheet: 404, too_big: 413, bad_style: 400 };
 
 /** A request body as bytes, for image uploads; refused past `max`. */
 const readBytes = (req, max = 15_000_000) =>
@@ -216,6 +216,19 @@ function apiPlugin(root) {
             if (fromAssets && existsSync(fromAssets)) cpSync(fromAssets, assetsDir(root, id), { recursive: true, filter: (f) => !f.includes(`${path.sep}.trash`) });
             return json(res, 201, { id });
           }
+          if (url.pathname === '/__api/chart-styles') {
+            if (req.method === 'GET') return json(res, 200, await readChartStyles(root));
+            if (!allowedWrite(req)) return json(res, 403, { error: 'forbidden' });
+            if (req.method === 'PUT') return json(res, 200, await writeChartStyles(root, JSON.parse(await readBody(req))));
+          }
+          if (url.pathname === '/__api/favorites') {
+            if (req.method === 'GET') return json(res, 200, { favorites: readFavorites(root) });
+            if (!allowedWrite(req)) return json(res, 403, { error: 'forbidden' });
+            if (req.method === 'PUT') {
+              const b = JSON.parse(await readBody(req));
+              return json(res, 200, { favorites: setFavorite(root, b.scope, b.name, Boolean(b.on)) });
+            }
+          }
           // ---------- assets ----------
           if (url.pathname.startsWith('/__api/assets')) {
             const scope = url.searchParams.get('scope') ?? '';
@@ -241,12 +254,13 @@ function apiPlugin(root) {
             }
             if (url.pathname === '/__api/assets/upload' && req.method === 'POST') {
               assetPath(root, scope, name);
-              return json(res, 201, saveImage(root, scope, name, await readBytes(req)));
+              return json(res, 201, saveImage(root, scope, name, await readBytes(req), { replace: url.searchParams.get('replace') === '1' }));
             }
             if (url.pathname === '/__api/assets/chart' && req.method === 'POST') {
               const b = JSON.parse(await readBody(req));
               return json(res, 201, await renderChart(root, b.workbook, b));
             }
+            if (url.pathname === '/__api/assets/rename' && req.method === 'POST') return json(res, 200, renameAsset(root, scope, name, url.searchParams.get('to') ?? ''));
             if (url.pathname === '/__api/assets' && req.method === 'DELETE') return json(res, 200, trashAsset(root, scope, name));
             return json(res, 404, { error: 'not found' });
           }

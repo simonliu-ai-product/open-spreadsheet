@@ -50,6 +50,7 @@ page.setDefaultTimeout(8000);
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+page.on('response', (r) => r.status() === 404 && console.log('404', r.request().resourceType(), decodeURIComponent(r.url())));
 const mod = 'Meta';
 const shot = (n) => page.screenshot({ path: path.join(out, `${n}.png`) });
 const cellText = (a1) =>
@@ -392,27 +393,108 @@ await go('B5');
   // charts: images in Assets, never on the grid; notes beside them
   await typeIn('B2', '500');
   await go('A1:B4');
-  await page.click('.toolbar button[title="圖表圖片"]');
-  await page.click('.menu-item:has-text("長條圖")');
+  await page.click('.toolbar button[title="新增圖表"]');
   await page.waitForSelector('.dialog');
   await page.fill('.dialog input >> nth=0', '狀態金額');
   await page.click('.dialog .btn.primary');
-  await page.waitForSelector('.assets-panel:not([hidden]) .asset-card.image');
+  await page.waitForTimeout(400);
   const bookIdNow = decodeURIComponent((await page.evaluate(() => location.hash)).replace(/^#\/w\//, ''));
   const chartFileOnDisk = path.join(ws, 'sheets', bookIdNow, 'assets', '狀態金額.svg');
   const chartSvgText = existsSync(chartFileOnDisk) ? readFileSync(chartFileOnDisk, 'utf8') : '';
-  check('a chart image lands in Assets, drawn from the cells', chartSvgText.startsWith('<svg xmlns') && chartSvgText.includes('500') && (await page.$$('.assets-panel .asset-card.image img')).length >= 1, chartFileOnDisk);
+  check('a chart image lands in Assets, drawn from the cells', chartSvgText.startsWith('<svg xmlns') && chartSvgText.includes('500') && chartSvgText.includes('open-spreadsheet-chart'), chartFileOnDisk);
   check('nothing is placed on the grid', (await page.$$('.chart')).length === 0);
-  await page.click('.assets-actions .btn:has-text("新增筆記")');
+  // the numbers change; the chart in Assets follows them
+  await typeIn('B2', '777');
+  await page.click('.view-switch button[data-view="assets"]');
+  await page.waitForSelector('.asset-card img');
+  await page.waitForTimeout(600);
+  check('Assets shows the chart, redrawn from the new numbers', readFileSync(chartFileOnDisk, 'utf8').includes('777') && (await page.$$('.asset-card[data-name="狀態金額.svg"]')).length === 1);
+  await shot('13e-assets-home');
+  // One asset on the right; Home brings the overview back.
+  await page.click('.asset-card[data-name="狀態金額.svg"] .asset-frame');
+  await page.waitForSelector('.asset-stage img', { timeout: 3000 }).catch(() => {});
+  check('an asset opens on the right, listed on the left', (await page.$$('.asset-stage img')).length === 1 && (await page.$$('.asset-view .lib-item.on[data-name="狀態金額.svg"]')).length === 1);
+  // The title on top is edited in place: the file is renamed and the chart retitled.
+  await page.fill('.asset-title-input', '狀態與金額');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(700);
+  const retitled = path.join(ws, 'sheets', bookIdNow, 'assets', '狀態與金額.svg');
+  check('retitling renames the file and the chart', existsSync(retitled) && !existsSync(chartFileOnDisk) && readFileSync(retitled, 'utf8').includes('>狀態與金額<'));
+  await page.fill('.asset-title-input', '狀態金額');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(700);
+  check('and back again', existsSync(chartFileOnDisk));
+  await page.click('.asset-view .lib-tab[data-nav="home"]');
+  check('Home shows every asset again', (await page.$$('.asset-view .asset-grid .asset-card')).length >= 1 && (await page.$$('.asset-stage')).length === 0);
+  // Chart styles: the built-in ones, and a chart switched to one in place.
+  await page.click('.asset-view .lib-tab[data-nav="styles"]');
+  await page.waitForSelector('.style-card');
+  check('chart styles are offered', (await page.$$('.style-card')).length === 6);
+  await shot('13e-styles');
+  await page.click('.style-card[data-style="night"]');
+  await page.waitForSelector('.style-previews img');
+  await page.click('.style-page .btn:has-text("複製來編輯")');
+  await page.waitForTimeout(600);
+  const stylesOnDisk = path.join(ws, 'assets', 'chart-styles.json');
+  check('duplicating a style saves it for the workspace', existsSync(stylesOnDisk) && readFileSync(stylesOnDisk, 'utf8').includes('"night-1"'));
+  await shot('13e-style-edit');
+  await page.click('.asset-view .lib-tab[data-nav="all"]');
+  await page.click('.asset-view .lib-item[data-name="狀態金額.svg"]');
+  await page.selectOption('.asset-style-pick', 'night');
+  await page.waitForTimeout(500);
+  check('a chart takes a new style in place', readFileSync(chartFileOnDisk, 'utf8').includes('fill="#15181e"'));
+  await page.selectOption('.asset-style-pick', '');
+  await page.waitForTimeout(400);
+  await page.click('.view-switch button[data-view="sheet"]');
+  await typeIn('B2', '500'); // later checks count the colour scale on 500 and 200
+  await page.click('.view-switch button[data-view="notes"]');
+  await page.waitForSelector('.note-view .lib-head button');
+  await page.click('.note-view .lib-head button');
   await page.waitForSelector('.dialog');
   await page.fill('.dialog input >> nth=0', '預算說明');
-  await page.fill('.dialog textarea', '金額是新台幣，狀態由業務填寫。');
   await page.click('.dialog .btn.primary');
-  await page.waitForSelector('.assets-panel .asset-card.note[data-name="預算說明.md"]', { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('.note-view .lib-item[data-name="預算說明.md"].on', { timeout: 5000 }).catch(() => {});
+  // Written as it reads: Enter after the title, then Markdown that renders as it is typed.
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('金額是**新台幣**。');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- 第一點');
+  check('the note renders as it is typed', (await page.$$('.note-doc strong')).length === 1 && (await page.$$('.note-doc ul li')).length === 1);
+  await page.waitForTimeout(1200);
   const noteOnDisk = path.join(ws, 'sheets', bookIdNow, 'assets', '預算說明.md');
-  check('a note is saved as Markdown beside the workbook', (await page.$$('.assets-section .asset-card.note[data-name="預算說明.md"]')).length === 1 && existsSync(noteOnDisk) && readFileSync(noteOnDisk, 'utf8').startsWith('# 預算說明') && readFileSync(noteOnDisk, 'utf8').includes('新台幣'));
-  await shot('13f-assets');
-  await page.click('.assets-head button');
+  const noteText = existsSync(noteOnDisk) ? readFileSync(noteOnDisk, 'utf8') : '';
+  check('a note is written as Markdown beside the workbook', noteText.startsWith('# 預算說明\n\n金額是**新台幣**。\n\n- 第一點'), JSON.stringify(noteText.slice(0, 60)));
+  await shot('13f-notes');
+  // Search finds words inside notes; a star puts one under Favorites; Home lists them as cards.
+  await page.fill('.note-view .lib-search input', '新台幣');
+  await page.waitForTimeout(400);
+  check('search finds a note by what it says', (await page.$$('.note-view .lib-item[data-name="預算說明.md"] mark')).length === 1);
+  await page.fill('.note-view .lib-search input', '');
+  await page.click('.note-view .note-head .lib-star');
+  await page.click('.note-view .lib-tab[data-nav="fav"]');
+  await page.waitForTimeout(300);
+  check('a starred note is under Favorites', (await page.$$('.note-view .lib-item[data-name="預算說明.md"]')).length === 1);
+  await page.click('.note-view .lib-tab[data-nav="home"]');
+  await page.waitForSelector('.note-card', { timeout: 3000 }).catch(() => {});
+  check('Home lists the notes as cards', (await page.$$('.note-card')).length >= 2 && (await page.$$('.note-view .note-doc')).length === 0);
+  await shot('13g-notes-home');
+  await page.click('.note-card[data-key$="預算說明.md"]');
+  await page.waitForSelector('.note-view .note-doc', { timeout: 3000 }).catch(() => {});
+  check('a card opens its note', (await page.$$('.note-view .note-doc')).length === 1);
+  // A picture from Assets, by its path beside the note; shown in place and kept as Markdown.
+  await page.click('.note-view .note-head button[title="插入素材"]');
+  await page.click('.menu-item:has-text("狀態金額")');
+  await page.waitForSelector('.note-doc img.md-img', { timeout: 3000 }).catch(() => {});
+  check('an asset shows in the note', await page.$eval('.note-doc img.md-img', (i) => i.complete && i.naturalWidth > 0).catch(() => false));
+  await page.waitForTimeout(1200);
+  check('and is saved as a Markdown image beside it', readFileSync(noteOnDisk, 'utf8').includes('![狀態金額](狀態金額.svg)'));
+  await page.click('.note-view .note-head button[title="下載"]');
+  await page.click('.menu-item:has-text("PDF")');
+  await page.waitForTimeout(200);
+  const notePrint = await page.evaluate(() => window.__lastNotePrint ?? '');
+  check('a note prints as a page (PDF), pictures included', notePrint.includes('<strong>新台幣</strong>') && notePrint.includes('@page') && notePrint.includes('<img class="md-img" src="http'));
+  await page.click('.view-switch button[data-view="sheet"]');
+  await page.waitForSelector('.grid .cell');
 
   // AutoComplete from the column, and the format painter
   await go('A5');

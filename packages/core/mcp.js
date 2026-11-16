@@ -10,7 +10,7 @@
  *
  * Speaks JSON-RPC 2.0, one message per line, with no dependencies.
  */
-import { assetsDir, listAssets, readAsset, renderChart, trashAsset, writeNote } from './assets.js';
+import { assetsDir, listAssets, readAsset, readChartStyles, renameAsset, renderChart, trashAsset, writeChartStyles, writeNote } from './assets.js';
 import { existsSync, cpSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
@@ -142,14 +142,38 @@ const TOOLS = [
         workbook: str,
         sheet: str,
         range: { ...str, description: 'e.g. A1:C13' },
-        type: { type: 'string', enum: ['bar', 'line', 'pie'] },
+        type: { type: 'string', enum: ['bar', 'barH', 'stacked', 'line', 'area', 'pie', 'doughnut', 'scatter', 'combo'], description: 'bar (columns), barH (horizontal bars), stacked, line, area, pie, doughnut, scatter (first column is x), combo (first series columns, the rest lines on a right axis)' },
         title: str,
         name: { ...str, description: 'file name; from the title when omitted' },
         scope: { ...str, description: 'where to save: the workbook (default) or "shared"' },
         replace: { type: 'boolean', description: 'overwrite an image of that name instead of numbering a new one' },
+        style: { ...str, description: 'a chart style id from list_chart_styles; omitted, the chart follows the workspace default' },
       },
       required: ['workbook', 'range'],
     },
+  },
+  {
+    name: 'list_chart_styles',
+    description: 'The chart styles charts can be drawn in: the built-in ones, the workspace\'s own (assets/chart-styles.json) and which one is the default.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'save_chart_style',
+    description:
+      'Add or change one of the workspace\'s chart styles (a house style, e.g. from brand colours): { id, name, colors: [hex…], background, text, muted, grid, gridLines, font: sans|serif|mono|rounded, radius 0–8 }. Charts that use it are redrawn the next time they are shown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        style: { type: 'object', description: 'the style; id is lowercase letters, numbers and dashes' },
+        make_default: { type: 'boolean', description: 'new charts follow it' },
+      },
+      required: ['style'],
+    },
+  },
+  {
+    name: 'rename_asset',
+    description: 'Rename an image or note in its folder (same ending: .svg stays .svg). To retitle a chart drawn by render_chart, render it again with the new title and replace: true, then rename.',
+    inputSchema: { type: 'object', properties: { scope: str, name: str, to: { ...str, description: 'the new file name' } }, required: ['scope', 'name', 'to'] },
   },
   {
     name: 'delete_asset',
@@ -450,6 +474,19 @@ async function callTool(root, name, a) {
       return writeNote(root, a.scope, a.name, a.text);
     case 'render_chart':
       return renderChart(root, a.workbook, a);
+    case 'list_chart_styles': {
+      const { BUILTIN_STYLES } = await import(new URL(import.meta.url.includes('/node_modules/') ? './dist/charts.js' : './app/charts.ts', import.meta.url).href);
+      const own = await readChartStyles(root);
+      return { default: own.default, builtin: BUILTIN_STYLES, styles: own.styles };
+    }
+    case 'save_chart_style': {
+      const own = await readChartStyles(root);
+      const id = a.style?.id;
+      const styles = own.styles.some((s) => s.id === id) ? own.styles.map((s) => (s.id === id ? a.style : s)) : [...own.styles, a.style];
+      return writeChartStyles(root, { default: a.make_default ? id : own.default, styles });
+    }
+    case 'rename_asset':
+      return renameAsset(root, a.scope, a.name, a.to);
     case 'delete_asset':
       return trashAsset(root, a.scope, a.name);
     case 'rename_workbook': {

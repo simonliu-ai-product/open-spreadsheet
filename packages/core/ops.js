@@ -285,7 +285,7 @@ export function checkWorkbook(data) {
       if (!Array.isArray(v.list) || !v.list.length) add('error', s.name, v.range ?? '', 'A validation rule needs a non-empty list of allowed values.');
     }
     for (const ch of s.charts ?? []) {
-      if (!['bar', 'line', 'pie'].includes(ch.type)) add('error', s.name, ch.id ?? '', `Unknown chart type "${ch.type}" (bar, line or pie).`);
+      if (!['bar', 'barH', 'stacked', 'line', 'area', 'pie', 'doughnut', 'scatter', 'combo'].includes(ch.type)) add('error', s.name, ch.id ?? '', `Unknown chart type "${ch.type}".`);
       if (!parseRange(ch.range ?? '')) add('error', s.name, ch.id ?? '', 'A chart needs a data range like A1:C13.');
       if (![ch.x, ch.y, ch.w, ch.h].every((n) => typeof n === 'number' && n >= 0)) add('error', s.name, ch.id ?? '', 'A chart needs x, y, w and h in pixels.');
     }

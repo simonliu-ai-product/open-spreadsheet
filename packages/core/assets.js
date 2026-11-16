@@ -80,10 +80,11 @@ export function writeNote(root, scope, name, text) {
 }
 
 /** Stores an image (an upload); a taken name gets a number rather than replacing the file. */
-export function saveImage(root, scope, name, bytes) {
+export function saveImage(root, scope, name, bytes, opts = {}) {
   if (!IMAGE.test(String(name ?? ''))) throw new OpsError('bad_name', 'An image is a .svg, .png, .jpg, .gif or .webp file');
   assetPath(root, scope, name);
-  const free = freeName(root, scope, name);
+  // A redrawn chart keeps its name; anything else new gets a number instead of replacing a file.
+  const free = opts.replace ? name : freeName(root, scope, name);
   writeAtomic(assetPath(root, scope, free), bytes);
   return { scope, name: free };
 }
@@ -97,6 +98,23 @@ export function trashAsset(root, scope, name) {
   const to = path.join(trash, `${Date.now()}-${name}`);
   renameSync(file, to);
   return { scope, name, trashedTo: path.relative(root, to) };
+}
+
+/** Renames an image or note in place, keeping its kind; a star follows it. */
+export function renameAsset(root, scope, name, to) {
+  const from = assetPath(root, scope, name);
+  const dest = assetPath(root, scope, to);
+  if (!existsSync(from)) throw new OpsError('not_found', `No asset ${name} in ${scope}`);
+  const ext = (n) => n.split('.').pop().toLowerCase();
+  if (ext(name) !== ext(to)) throw new OpsError('bad_name', `Keep the .${ext(name)} ending.`);
+  // Only a change of case may land on the "same" file (macOS folders ignore case).
+  if (to !== name && existsSync(dest) && to.toLowerCase() !== name.toLowerCase()) throw new OpsError('exists', `${to} is taken in ${scope}`);
+  renameSync(from, dest);
+  const favs = readFavorites(root);
+  if (favs.some((f) => f.scope === scope && f.name === name)) {
+    writeAtomic(favouritesFile(root), `${JSON.stringify(favs.map((f) => (f.scope === scope && f.name === name ? { scope, name: to } : f)), null, 2)}\n`);
+  }
+  return { scope, from: name, name: to };
 }
 
 const slug = (text) =>
@@ -115,7 +133,7 @@ export async function renderChart(root, workbook, opts) {
   const sheet = opts.sheet ? data.sheets.find((s) => s.name.toLowerCase() === String(opts.sheet).toLowerCase()) : data.sheets[0];
   if (!sheet) throw new OpsError('no_sheet', `No sheet "${opts.sheet}". Sheets: ${data.sheets.map((s) => s.name).join(', ')}`);
   const type = opts.type ?? 'bar';
-  if (!['bar', 'line', 'pie'].includes(type)) throw new OpsError('bad_type', 'type is bar, line or pie');
+  if (!['bar', 'barH', 'stacked', 'line', 'area', 'pie', 'doughnut', 'scatter', 'combo'].includes(type)) throw new OpsError('bad_type', 'type is one of bar, barH, stacked, line, area, pie, doughnut, scatter, combo');
   const r = parseRangeText(opts.range);
   if (!r) throw new OpsError('bad_range', `Not a range: ${opts.range}`);
   if ((r.r1 - r.r0 + 1) * (r.c1 - r.c0 + 1) > 5000) throw new OpsError('too_big', 'Chart at most 5,000 cells; pass a smaller range.');
@@ -126,13 +144,89 @@ export async function renderChart(root, workbook, opts) {
     for (let col = r.c0; col <= r.c1; col++) line.push(wb.value(sheet.name, row, col));
     cells.push(line);
   }
-  const { chartData, chartFile } = await charts();
+  const { chartData, chartFile, findStyle, BUILTIN_STYLES } = await charts();
+  const own = await readChartStyles(root);
+  if (opts.style && !own.styles.some((s) => s.id === opts.style) && !BUILTIN_STYLES.some((s) => s.id === opts.style)) {
+    throw new OpsError('bad_style', `No chart style "${opts.style}". Styles: ${[...BUILTIN_STYLES, ...own.styles].map((s) => s.id).join(', ')}`);
+  }
   const spec = { id: 'asset', type, range: opts.range, title: opts.title ?? '', x: 0, y: 0, w: 720, h: 405 };
-  const svg = chartFile(spec, chartData(cells), Number(opts.width) || 720, Number(opts.height) || 405);
+  // The source rides in the file, so the editor can redraw it when the numbers change.
+  // No style named: it follows the workspace's default, now and when redrawn.
+  const source = { sheet: sheet.name, range: String(opts.range).toUpperCase(), type, ...(opts.title ? { title: String(opts.title) } : {}), ...(opts.style ? { style: String(opts.style) } : {}) };
+  const svg = chartFile(spec, chartData(cells), Number(opts.width) || 720, Number(opts.height) || 405, source, findStyle(opts.style ?? own.default, own.styles));
   const scope = opts.scope ?? workbook;
   const wanted = opts.name ? (/\.svg$/i.test(opts.name) ? opts.name : `${opts.name}.svg`) : `${slug(opts.title || `${sheet.name}-${opts.range}`) || 'chart'}.svg`;
   assetPath(root, scope, wanted);
   const name = opts.replace ? wanted : freeName(root, scope, wanted);
   writeAtomic(assetPath(root, scope, name), svg);
   return { scope, name, sheet: sheet.name, range: opts.range, type, bytes: Buffer.byteLength(svg) };
+}
+
+// ---------- chart styles ----------
+// The workspace's own looks for chart files, beside the built-in ones. Shared
+// (assets/chart-styles.json, in git) so teammates and agents draw alike.
+const stylesFile = (root) => path.join(root, 'assets', 'chart-styles.json');
+
+/** { default, styles }: the style new charts follow, and the workspace's own styles. */
+export async function readChartStyles(root) {
+  const { cleanStyle, BUILTIN_STYLES } = await charts();
+  let raw = {};
+  try {
+    raw = JSON.parse(readFileSync(stylesFile(root), 'utf8'));
+  } catch {
+    // none yet
+  }
+  const seen = new Set(BUILTIN_STYLES.map((s) => s.id));
+  const styles = [];
+  for (const s of Array.isArray(raw?.styles) ? raw.styles : []) {
+    const c = cleanStyle(s);
+    if (c && !seen.has(c.id)) {
+      seen.add(c.id);
+      styles.push(c);
+    }
+  }
+  const def = typeof raw?.default === 'string' && seen.has(raw.default) ? raw.default : 'default';
+  return { default: def, styles };
+}
+
+/** Replaces the workspace's styles and default; bad entries are refused, not dropped. */
+export async function writeChartStyles(root, next) {
+  const { cleanStyle, BUILTIN_STYLES } = await charts();
+  const builtin = new Set(BUILTIN_STYLES.map((s) => s.id));
+  const ids = new Set();
+  const styles = (Array.isArray(next?.styles) ? next.styles : []).map((s) => {
+    const c = cleanStyle(s);
+    if (!c) throw new OpsError('bad_style', 'A style needs an id of lowercase letters, numbers and dashes.');
+    if (builtin.has(c.id) || ids.has(c.id)) throw new OpsError('bad_style', `The style id "${c.id}" is taken.`);
+    ids.add(c.id);
+    return c;
+  });
+  const def = typeof next?.default === 'string' ? next.default : 'default';
+  if (!builtin.has(def) && !ids.has(def)) throw new OpsError('bad_style', `No chart style "${def}" to make the default.`);
+  const out = { default: def, styles };
+  writeAtomic(stylesFile(root), `${JSON.stringify(out, null, 2)}
+`);
+  return out;
+}
+
+// ---------- favourite notes ----------
+// A person's pick, not part of the workbook: kept in .open-spreadsheet/ (git-ignored).
+const favouritesFile = (root) => path.join(root, '.open-spreadsheet', 'favorites.json');
+
+/** The starred notes, as { scope, name }, in the order they were starred. */
+export function readFavorites(root) {
+  try {
+    const list = JSON.parse(readFileSync(favouritesFile(root), 'utf8'));
+    return Array.isArray(list) ? list.filter((f) => f && typeof f.scope === 'string' && typeof f.name === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function setFavorite(root, scope, name, on) {
+  assetPath(root, scope, name);
+  const rest = readFavorites(root).filter((f) => !(f.scope === scope && f.name === name));
+  const next = on ? [...rest, { scope, name }] : rest;
+  writeAtomic(favouritesFile(root), `${JSON.stringify(next, null, 2)}\n`);
+  return next;
 }

@@ -95,7 +95,9 @@ export interface WorkbookSummary {
   updatedAt: string;
 }
 
-export type ChartType = 'bar' | 'line' | 'pie';
+/** Column, bar (horizontal), stacked column, line, area, pie, doughnut, scatter, and combo (columns + lines on a right axis). */
+export type ChartType = 'bar' | 'barH' | 'stacked' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter' | 'combo';
+
 
 export interface ChartSpec {
   id: string;

@@ -45,7 +45,7 @@ npx open-spreadsheet export <id> --range A1:F200 --out data.csv   # computed val
 - Sizes are pixels: `cols` by letter, `rows` by 1-based row number.
 - **Defined names** sit at the top level: `"names": { "Sales": "Orders!$F$2:$F$200" }`, then `=SUM(Sales)`.
 - **Conditional formats, dropdown lists and filters** live beside the cells too (`conditional`, `validation`, `filter`); see the `sheet-authoring` skill.
-- **Assets** sit beside each workbook in `sheets/<id>/assets/` (and shared in `assets/`): chart images and Markdown notes. **Read a workbook's notes and the shared ones before you change it** — they say what the numbers mean and what to keep. Charts are never on the grid: make one with the MCP `render_chart` tool (an SVG in Assets). Keep what you learn with `write_note`.
+- **Assets** sit beside each workbook in `sheets/<id>/assets/` (and shared in `assets/`): chart images and Markdown notes. **Read a workbook's notes and the shared ones before you change it** — they say what the numbers mean and what to keep. Charts are never on the grid: make one with the MCP `render_chart` tool (an SVG in Assets), in the workspace's chart style unless asked for another (`list_chart_styles`). Keep what you learn with `write_note`. A note shows an asset with a Markdown image by its path from the note: `![Sales](sales.svg)` beside it, `../../../assets/x.svg` for a shared one.
 - **Protected ranges** (`"protected": ["A1:D1"]` on a sheet) are cells a person locked. Do not change them, by MCP or by editing the JSON; if a task needs them changed, ask the person to unprotect them in the editor.
 - **Notes** are comments people leave on cells, often requests for you. "Apply the notes" means: do what each asks, then remove it (the `apply-notes` skill).
 

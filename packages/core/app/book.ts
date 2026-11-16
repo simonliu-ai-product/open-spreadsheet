@@ -19,8 +19,8 @@ import {
   type Node as FormulaNode,
 } from '@open-spreadsheet/engine';
 import { isProtectedCell, touchesProtected, BLANK, columnValues, conditionalLook, type CellLook, DEFAULT_HIGHLIGHT, filteredRows, shiftRange, validationAt } from './features.ts';
-import { chartData, chartFile, chartSvg } from './charts.ts';
-import { createAssetsPanel, uploadAsset } from './assets.ts';
+import { type ChartSource, type ChartStyle, chartData, chartFile, chartSvg } from './charts.ts';
+import { createAssetsView, createNotesView, fileStem, uploadAsset } from './assets.ts';
 import { printHtml } from './print.ts';
 import { api } from './home.ts';
 import { helpFor, suggest } from './help.ts';
@@ -161,8 +161,22 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   const helpBtn = iconButton('keyboard', T.shortcuts, () => showShortcuts());
   const paletteBtn = iconButton('list', `${T.palette.replace('…', '')} (${MOD}K)`, () => void openPalette());
   const notesBtn = iconButton('pencil', T.notes, () => notesMenu());
-  const assetsBtn = iconButton('file', `${T.assets} — ${T.assetsHint}`, () => assets.toggle(), T.assets);
-  assetsBtn.classList.add('with-label');
+  // Sheet · Assets · Notes: one workbook, three views of it.
+  type View = 'sheet' | 'assets' | 'notes';
+  let view: View = 'sheet';
+  const viewSwitch = el('div', 'view-switch');
+  viewSwitch.setAttribute('role', 'tablist');
+  const viewButtons = (['sheet', 'assets', 'notes'] as const).map((v) => {
+    const b = el('button', '', { sheet: T.viewSheet, assets: T.viewAssets, notes: T.viewNotes }[v]);
+    b.type = 'button';
+    b.dataset.view = v;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', String(v === 'sheet'));
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => void setView(v));
+    viewSwitch.append(b);
+    return b;
+  });
   const notesBadge = el('span', 'badge');
   notesBtn.append(notesBadge);
   const downloadBtn = el('button', 'btn primary');
@@ -170,7 +184,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   downloadBtn.append(icon('download', 15), el('span', '', T.download), icon('chevronDown', 14));
   const fileMark = el('span', 'brand-mark');
   fileMark.append(icon('sheet', 14));
-  head.append(back, fileMark, titleBtn, status, el('div', 'grow'), assetsBtn, notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, downloadBtn);
+  head.append(back, fileMark, titleBtn, status, viewSwitch, el('div', 'grow'), notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, downloadBtn);
 
   // Toolbar
   const toolbar = el('div', 'toolbar');
@@ -296,9 +310,45 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   const gridWrap = el('div', 'grid-wrap');
   // Charts are images in Assets now; a workbook that still has charts on its grid is offered the move.
   const legacyBar = el('div', 'legacy-charts');
-  const assets = createAssetsPanel({ bookId: id, newChart: (at) => chartImageMenu(at), onClose: () => editor.focus() });
-  gridWrap.append(grid, findbar, assets.el);
-  root.append(head, toolbar, fbar, legacyBar, gridWrap, tabsBar);
+  const assets = createAssetsView({
+    bookId: id,
+    charts: {
+      sheets: () => data.sheets.map((s) => s.name),
+      selection: () => {
+        const s = selection();
+        const r = s.r0 === s.r1 && s.c0 === s.c1 ? currentRegion(active) : s;
+        return { sheet: name(), range: rangeText(r) };
+      },
+      draw: (source, look) => chartImageSvg(source, look),
+    },
+  });
+  const notes = createNotesView({ bookId: id });
+  assets.el.hidden = true;
+  notes.el.hidden = true;
+  gridWrap.append(grid, findbar);
+  root.append(head, toolbar, fbar, legacyBar, gridWrap, tabsBar, assets.el, notes.el);
+  /** Switches what the workbook shows; leaving Notes saves the note being written. */
+  async function setView(next: View) {
+    if (next === view) return;
+    if (view === 'notes') await notes.flush();
+    if (editing) commitEdit();
+    view = next;
+    for (const b of viewButtons) b.setAttribute('aria-selected', String(b.dataset.view === next));
+    const sheetOn = next === 'sheet';
+    for (const n of [toolbar, fbar, gridWrap, tabsBar]) n.hidden = !sheetOn;
+    if (sheetOn) paintLegacyBar();
+    else legacyBar.hidden = true;
+    assets.el.hidden = next !== 'assets';
+    notes.el.hidden = next !== 'notes';
+    closeMenus();
+    if (next === 'assets') await assets.refresh();
+    else if (next === 'notes') await notes.refresh();
+    else {
+      layout();
+      render();
+      editor.focus();
+    }
+  }
   app.replaceChildren(root);
   document.body.append(popup);
 
@@ -2643,53 +2693,20 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     window.addEventListener('mouseup', up);
   }
   // ---------- chart images (Assets) ----------
-  const fileSlug = (text: string) =>
-    text
-      .normalize('NFKC')
-      .replace(/[^\p{L}\p{N}]+/gu, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 60);
-  /** A range drawn as a standalone SVG, the same picture the MCP render_chart tool makes. */
-  function chartImageSvg(sheetName: string, range: string, type: ChartType, title: string): string {
-    const r = parseRange(range);
-    if (!r) return '';
+  /** A range drawn as a standalone SVG that remembers its source; '' when the sheet or range is gone. */
+  function chartImageSvg(source: ChartSource, look?: ChartStyle): string {
+    const r = parseRange(source.range);
+    const sheetName = data.sheets.find((s) => s.name === source.sheet)?.name;
+    if (!r || !sheetName) return '';
     const cells = Array.from({ length: r.r1 - r.r0 + 1 }, (_, i) => Array.from({ length: r.c1 - r.c0 + 1 }, (_, k) => wb.value(sheetName, r.r0 + i, r.c0 + k)));
-    const spec: ChartSpec = { id: 'asset', type, range, ...(title ? { title } : {}), x: 0, y: 0, w: 720, h: 405 };
-    return chartFile(spec, chartData(cells));
+    const spec: ChartSpec = { id: 'asset', type: source.type, range: source.range, ...(source.title ? { title: source.title } : {}), x: 0, y: 0, w: 720, h: 405 };
+    return chartFile(spec, chartData(cells), 720, 405, source, look);
   }
-  /** Draws the selection (or the data around the cursor) as a chart image in this workbook's Assets. */
-  async function chartImage(type: ChartType) {
-    const s = selection();
-    const r = s.r0 === s.r1 && s.c0 === s.c1 ? currentRegion(active) : s;
-    const range = rangeText(r);
-    const head = wb.value(name(), r.r0, r.c0);
-    const v = await promptDialog({
-      title: T.newChartImage,
-      body: `${name()}!${range}`,
-      fields: [{ name: 't', label: T.title, value: typeof head === 'string' && head ? head : '' }],
-      ok: T.save,
-    });
+  /** The toolbar's chart button: the new-chart dialog, starting from the selection. */
+  async function newChartFromSheet() {
+    const saved = await assets.newChart();
     editor.focus();
-    if (!v) return;
-    const title = v.t!.trim();
-    try {
-      const saved = await uploadAsset(id, `${fileSlug(title || `${name()}-${range}`) || 'chart'}.svg`, chartImageSvg(name(), range, type, title));
-      await assets.showSaved(id, saved);
-      toast(T.chartSaved(saved));
-    } catch (e) {
-      toast((e as Error).message);
-    }
-  }
-  function chartImageMenu(at: HTMLElement) {
-    showMenu(
-      [
-        { label: T.chartBar, icon: 'chart', action: () => void chartImage('bar') },
-        { label: T.chartLine, icon: 'lineChart', action: () => void chartImage('line') },
-        { label: T.chartPie, icon: 'pieChart', action: () => void chartImage('pie') },
-      ],
-      at,
-      () => editor.focus(),
-    );
+    if (saved) toast(T.chartSaved(saved.replace(/\.svg$/i, '')));
   }
   /** Turns every chart on the grid into an image in Assets, then takes them off the grid (one undo step). */
   async function moveChartsToAssets() {
@@ -2697,7 +2714,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     if (!all.length) return;
     try {
       for (const { sheet: sn, c } of all) {
-        await uploadAsset(id, `${fileSlug(c.title || `${sn}-${c.range}`) || 'chart'}.svg`, chartImageSvg(sn, c.range, c.type, c.title ?? ''));
+        await uploadAsset(id, `${fileStem(c.title ?? '', `${sn}-${c.range}`)}.svg`, chartImageSvg({ sheet: sn, range: c.range, type: c.type, ...(c.title ? { title: c.title } : {}) }));
       }
     } catch (e) {
       toast((e as Error).message);
@@ -2707,7 +2724,6 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       for (const sh of data.sheets) delete sh.charts;
     }, { relayout: false });
     paintLegacyBar();
-    await assets.showSaved(id, '');
     toast(T.chartsMoved(all.length));
   }
   function paintLegacyBar() {
@@ -2717,7 +2733,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     const move = el('button', 'btn primary', T.moveChartsToAssets);
     move.type = 'button';
     move.addEventListener('click', () => void moveChartsToAssets());
-    legacyBar.replaceChildren(icon('chart', 14), el('span', '', T.chartsOnGrid(n)), el('div', 'grow'), move);
+    legacyBar.replaceChildren(icon('chart', 14), el('span', '', T.chartsOnGrid(n)), move);
   }
   function chartMenu(id: string, at: { x: number; y: number } | HTMLElement) {
     const spec = chartSpec(id);
@@ -3256,10 +3272,8 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     );
   };
   tb.cond.addEventListener('click', () => conditionalMenu(tb.cond));
-  tb.chart.title = T.newChartImage;
-  tb.chart.addEventListener('click', () =>
-    chartImageMenu(tb.chart),
-  );
+  tb.chart.title = T.newChart;
+  tb.chart.addEventListener('click', () => void newChartFromSheet());
   tb.border.addEventListener('click', () => showMenu(borderItems(), tb.border, () => editor.focus()));
   tb.filter.addEventListener('click', () => {
     if (!sheet().filter) return toggleFilter();
@@ -3468,8 +3482,10 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       cmd(T.gRowsCols, T.hideCols(s.c1 - s.c0 + 1), () => hideCols(s.c0, s.c1), 'eyeOff', undefined, 'hide columns'),
       cmd(T.gRowsCols, T.unhideRows, () => unhideRows(s.r0, s.r1), 'eye', undefined, 'unhide show rows'),
       cmd(T.gRowsCols, T.unhideCols, () => unhideCols(s.c0, s.c1), 'eye', undefined, 'unhide show columns'),
-      ...(['bar', 'line', 'pie'] as const).map((k) => cmd(T.chart, `${T.newChartImage}：${{ bar: T.chartBar, line: T.chartLine, pie: T.chartPie }[k]}`, () => void chartImage(k), k === 'bar' ? 'chart' : k === 'line' ? 'lineChart' : 'pieChart', undefined, `chart graph image asset ${k}`)),
-      cmd(T.chart, T.assets, () => assets.open(), 'file', undefined, 'assets images notes markdown'),
+      cmd(T.chart, T.newChart, () => void newChartFromSheet(), 'chart', undefined, 'chart graph image asset bar line pie'),
+      cmd(T.gView, T.viewSheet, () => void setView('sheet'), 'sheet', undefined, 'sheet grid table view'),
+      cmd(T.gView, T.viewAssets, () => void setView('assets'), 'chart', undefined, 'assets images charts pictures view'),
+      cmd(T.gView, T.viewNotes, () => void setView('notes'), 'file', undefined, 'notes markdown context view'),
       cmd(T.gFormat, T.conditional, () => conditionalMenu(tb.cond), 'conditional', undefined, 'conditional formatting color scale data bar highlight'),
       cmd(T.gEdit, T.sortDesc, () => sortBy(true), 'sortDesc', undefined, 'sort descending'),
       ...['SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN'].map((f) => cmd(T.autosum, `${f}( )`, () => autosum(f), 'sigma', undefined, `autosum ${f.toLowerCase()}`)),
@@ -3555,7 +3571,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   // Keys pressed while a button (a tab, a toolbar button) has focus still reach the grid.
   const onWindowKey = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement;
-    if (t === editor || t.closest('input, textarea, select, .dialog, .menu') || !root.isConnected) return;
+    if (t === editor || t.closest('input, textarea, select, .dialog, .menu') || !root.isConnected || view !== 'sheet') return;
     if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
       editor.focus();
       return; // the character lands in the editor
@@ -4250,7 +4266,9 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   import.meta.hot?.on('open-spreadsheet:changed', onExternal);
   // An agent (or apply-notes) wrote an image or note: the open panel shows it.
   const onAssets = (d: { scope: string }) => {
-    if (assets.isOpen() && (d.scope === id || d.scope === 'shared')) void assets.refresh();
+    if (d.scope !== id && d.scope !== 'shared') return;
+    if (view === 'assets') void assets.refresh();
+    else if (view === 'notes') void notes.refresh();
   };
   import.meta.hot?.on('open-spreadsheet:assets', onAssets);
   paintLegacyBar();

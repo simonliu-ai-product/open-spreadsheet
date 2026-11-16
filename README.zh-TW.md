@@ -29,7 +29,7 @@
 - 顯示公式（⌃`）讓每一格顯示公式而不是結果；「跳到下一個錯誤」逐一走過活頁簿裡的錯誤格，並說明錯誤的意思（#DIV/0!、#REF!、#NAME? 等）。
 - 資料工具：移除重複項、資料剖析（依分隔符號拆欄）、轉置貼上。
 - 依同欄已有內容自動完成輸入、複製格式（⇧⌘C／⇧⌘V 或刷子按鈕）、填滿控點（數列、日期、`項目 1 → 項目 2`、參照會位移的公式）、`⌘D`／`⌘R`、`⌘Enter` 填滿選取範圍、與 Excel 和 Google 試算表互相複製貼上（TSV）、尋找與取代、復原與重做、縮放，以及顯示加總、平均、最小、最大、計數的狀態列。
-- **Assets**：每本活頁簿旁邊的 `sheets/<id>/assets/` 與共用的 `assets/`，放圖表圖片（長條、折線、圓餅，用工具列的圖表按鈕從選取範圍畫成 SVG，不再放在格子上）、上傳的圖片和 Markdown 筆記。筆記記下數字的意義與規則，agent 處理前會先讀。儲存格備註寫「畫一張每月業績長條圖」，經 `apply-notes` 就會在 Assets 得到圖片。舊活頁簿格子上的圖表可以一鍵移到 Assets。
+- **Assets**：每本活頁簿旁邊的 `sheets/<id>/assets/` 與共用的 `assets/`，放圖表圖片（長條、折線、圓餅，用工具列的圖表按鈕從選取範圍畫成 SVG，不再放在格子上）、上傳的圖片和 Markdown 筆記。筆記記下數字的意義與規則，agent 處理前會先讀。儲存格備註寫「畫一張每月業績長條圖」，經 `apply-notes` 就會在 Assets 得到圖片。舊活頁簿格子上的圖表可以一鍵移到 Assets。圖表風格（六種內建，自訂的存在 `assets/chart-styles.json`）決定顏色、字型與圓角；筆記可用 `![標題](chart.svg)` 顯示圖表，並匯出成 Markdown 或 PDF；素材與筆記都有最近、最愛與搜尋。
 - 條件式格式（大於／小於／介於／等於、文字包含、重複值、色階、資料橫條）、只能從清單選值的下拉選單，以及表頭附下拉選單的篩選——都存在活頁簿檔案裡。
 - 儲存格備註（右鍵或 ⇧F2）：角落標記、滑過顯示、標題列清單——也可以當成給 Agent 的修改要求（`apply-notes`）。
 - ⌘K 指令面板；淺色與深色；English、繁體中文、简体中文、日本語、한국어。
@@ -59,7 +59,7 @@ collectors: {
 - `init` 會寫入 `AGENTS.md`、`CLAUDE.md`、`.mcp.json` 與四個 Skills（`create-sheet`、`sheet-authoring`、`current-sheet`、`apply-notes`）；`sync-skills` 用來更新。
 - 編輯器把目前選取的位置記在 `node_modules/.open-spreadsheet/current.json`，Agent 聽得懂「這一格」。
 - `open-spreadsheet check` 列出顯示 `#NAME?`、`#REF!`、`#CIRC!`、`#VALUE!` 的公式，以及格式錯誤的儲存格、樣式與合併範圍。
-- `open-spreadsheet-mcp` 是透過 stdio 的 MCP server，26 個工具——`read_range`、`trace_cell`、`list_assets`、`read_asset`、`write_note`、`render_chart`、`delete_asset`、`write_cells`、`set_style`、`set_layout`、`create_workbook`、`rename_workbook`、`duplicate_workbook`、`delete_workbook`（移到 `sheets/.trash/`，不會真的刪掉）、工作表與列欄操作、`list_notes`、`set_note`、`set_names`、`evaluate`、`check`、`get_current`。每次寫入都會重算、回報留下的問題，而且檔案在讀取後被改過就拒絕寫入（SHA-256 檢查）。檢視器存檔走同一套規則，Agent 和人不會互相覆蓋——Agent 一改，開著的格子馬上更新。
+- `open-spreadsheet-mcp` 是透過 stdio 的 MCP server，29 個工具——`read_range`、`trace_cell`、`list_assets`、`read_asset`、`write_note`、`render_chart`、`list_chart_styles`、`save_chart_style`、`rename_asset`、`delete_asset`、`write_cells`、`set_style`、`set_layout`、`create_workbook`、`rename_workbook`、`duplicate_workbook`、`delete_workbook`（移到 `sheets/.trash/`，不會真的刪掉）、工作表與列欄操作、`list_notes`、`set_note`、`set_names`、`evaluate`、`check`、`get_current`。每次寫入都會重算、回報留下的問題，而且檔案在讀取後被改過就拒絕寫入（SHA-256 檢查）。檢視器存檔走同一套規則，Agent 和人不會互相覆蓋——Agent 一改，開著的格子馬上更新。
 - Claude Code 與 Antigravity 的 plugin 在 [plugins/open-spreadsheet](plugins/open-spreadsheet)：
 
 ```bash
