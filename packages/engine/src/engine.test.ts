@@ -265,3 +265,34 @@ describe('saving and loading', () => {
     expect(again.value('預算', 3, 1)).toBe(28000);
   });
 });
+
+describe('one-value functions given a range work cell by cell, as Excel does', () => {
+  const sales = (wb: Workbook) =>
+    wb.setMany('Sheet1', {
+      A1: '2026-01-05', B1: 100, C1: 'apple',
+      A2: '2026-01-20', B2: 200, C2: 'kiwi',
+      A3: '2026-02-03', B3: 50, C3: 'banana',
+      A4: '2026-03-15', B4: 7, C4: '',
+    });
+  it.each([
+    ['=SUMPRODUCT((MONTH(A1:A4)=1)*B1:B4)', 300],
+    ['=SUMPRODUCT((YEAR(A1:A4)=2026)*(DAY(A1:A4)>10)*B1:B4)', 207],
+    ['=SUMPRODUCT(LEN(C1:C4))', 15],
+    ['=SUMPRODUCT(--ISNUMBER(SEARCH("an",C1:C4)))', 1],
+    ['=SUMPRODUCT(--ISBLANK(C1:C4))', 1], // typing nothing leaves C4 empty
+    ['=SUM(IF(B1:B4>60,B1:B4,0))', 300],
+    ['=SUM(IFERROR(1/(B1:B4-50),0))', 0.0034],
+    ['=SUMPRODUCT(ROUND(B1:B4/3,0))', 119],
+    ['=SUM(LEN({"a","bb","ccc"}))', 6],
+    ['=MONTH(A3:A4)', 2], // in one cell, the first value until spilling lands
+  ])('%s', (f, expected) => {
+    const v = calc(f, sales);
+    if (typeof expected === 'number' && !Number.isInteger(expected)) close(v, expected, 4);
+    else expect(v).toBe(expected);
+  });
+  it('still evaluates only the IF branch it takes', () => {
+    expect(calc('=IF(TRUE,1,1/0)')).toBe(1);
+    expect(code(calc('=IF(A1:A2>0,1/0,2)', (wb) => wb.setMany('Sheet1', { A1: 1, A2: -1 })))).toBe('#DIV/0!');
+    expect(calc('=SUM(IFERROR(IF(A1:A2>0,1/0,2),5))', (wb) => wb.setMany('Sheet1', { A1: 1, A2: -1 }))).toBe(7);
+  });
+});

@@ -564,10 +564,73 @@ export const FUNCTIONS: Record<string, FunctionImpl> = {
   },
 };
 
+// ---------- lifting over arrays ----------
+
+/**
+ * Functions that take one value per argument and, as in Excel, are applied
+ * cell by cell when given a range or array: SUMPRODUCT((MONTH(A2:A9)=1)*B2:B9).
+ * The value is the argument positions that start it; the IFs lift only on
+ * their condition so a branch is not evaluated unless needed.
+ */
+const LIFT_ALL = `ABS INT TRUNC ROUND ROUNDUP ROUNDDOWN MOD POWER SQRT SIGN EXP LN LOG10 LOG
+  CEILING FLOOR MROUND EVEN ODD QUOTIENT RADIANS DEGREES SIN COS TAN ASIN ACOS ATAN ATAN2
+  SINH COSH TANH FACT NOT LEFT RIGHT MID LEN UPPER LOWER PROPER TRIM REPT EXACT SUBSTITUTE
+  REPLACE FIND SEARCH VALUE TEXT CHAR CODE UNICHAR UNICODE CLEAN NUMBERVALUE DOLLAR FIXED
+  DATE YEAR MONTH DAY WEEKDAY HOUR MINUTE SECOND TIME DATEVALUE TIMEVALUE EDATE EOMONTH
+  DAYS WEEKNUM ISOWEEKNUM ISBLANK ISNUMBER ISTEXT ISLOGICAL ISERROR ISNA ISERR ISEVEN
+  ISODD ISNONTEXT`.split(/\s+/);
+const LIFTS: Record<string, number[] | 'all'> = {
+  ...Object.fromEntries(LIFT_ALL.map((n) => [n, 'all' as const])),
+  IF: [0],
+  IFERROR: [0],
+  IFNA: [0],
+};
+
+/** Calls `fn` once per cell when a lifting argument is an array, else once. */
+function lifted(fn: FunctionImpl, starts: number[] | 'all', args: Node[], ctx: CallContext): Value {
+  const values = new Map<Node, Value>();
+  const evaluate = (n: Node): Value => {
+    if (!values.has(n)) {
+      try {
+        values.set(n, ctx.evaluate(n));
+      } catch (e) {
+        if (!(e instanceof ErrorSignal)) throw e;
+        values.set(n, e.error);
+      }
+    }
+    return values.get(n)!;
+  };
+  const triggers = args.filter((a, i) => a.kind !== 'missing' && (starts === 'all' || starts.includes(i)));
+  if (!triggers.some((a) => isMatrix(evaluate(a)))) {
+    // Already evaluated arguments are not evaluated again.
+    return run(fn, args, { ...ctx, evaluate });
+  }
+  const spread = args.map((a) => (a.kind === 'missing' ? null : asMatrix(evaluate(a))));
+  const rows = Math.max(...spread.map((m) => m?.length ?? 1));
+  const cols = Math.max(...spread.map((m) => m?.[0]?.length ?? 1));
+  // Each cell's call sees its own values through stand-in nodes.
+  const holders = args.map((a): Node => (a.kind === 'missing' ? a : { kind: 'paren', arg: { kind: 'missing' } }));
+  const out: Matrix = [];
+  for (let r = 0; r < rows; r++) {
+    const line: Scalar[] = [];
+    for (let c = 0; c < cols; c++) {
+      const cell = new Map<Node, Scalar>();
+      spread.forEach((m, i) => {
+        if (!m) return;
+        const row = m.length === 1 ? m[0] : m[r];
+        const v = row === undefined ? undefined : row.length === 1 ? row[0] : row[c];
+        cell.set(holders[i]!, v === undefined ? err.na : v);
+      });
+      const each: CallContext = { ...ctx, evaluate: (n) => (cell.has(n) ? cell.get(n)! : ctx.evaluate(n)) };
+      line.push(scalarOf(run(fn, holders, each)));
+    }
+    out.push(line);
+  }
+  return out;
+}
+
 /** Runs a function, turning a thrown error value into a returned one. */
-export function callFunction(name: string, args: Node[], ctx: CallContext): Value {
-  const fn = FUNCTIONS[name];
-  if (!fn) return err.name;
+function run(fn: FunctionImpl, args: Node[], ctx: CallContext): Value {
   try {
     const v = fn(args, ctx);
     if (typeof v === 'number' && !Number.isFinite(v)) return err.num;
@@ -576,6 +639,13 @@ export function callFunction(name: string, args: Node[], ctx: CallContext): Valu
     if (e instanceof ErrorSignal) return e.error;
     throw e;
   }
+}
+
+export function callFunction(name: string, args: Node[], ctx: CallContext): Value {
+  const fn = FUNCTIONS[name];
+  if (!fn) return err.name;
+  const starts = LIFTS[name];
+  return starts ? lifted(fn, starts, args, ctx) : run(fn, args, ctx);
 }
 
 export { CellError, formatGeneral };

@@ -215,6 +215,14 @@ describe('plugin', () => {
       expect(readFileSync(path.join(plugin, name, 'SKILL.md'), 'utf8'), name).toBe(readFileSync(path.join(core, name, 'SKILL.md'), 'utf8'));
     }
   });
+
+  // Installed plugins update only when the version changes, so it follows the package's.
+  it('carries the package version', () => {
+    const { version } = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    for (const file of ['plugin.json', '.claude-plugin/plugin.json']) {
+      expect(JSON.parse(readFileSync(path.join(__dirname, '../../plugins/open-spreadsheet', file), 'utf8')).version, file).toBe(version);
+    }
+  });
 });
 
 describe('packaging', () => {
