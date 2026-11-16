@@ -159,6 +159,9 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
     render();
   });
   const helpBtn = iconButton('keyboard', T.shortcuts, () => showShortcuts());
+  // Also in ⌘K: the first to go when the header is narrow (an editor side panel).
+  helpBtn.classList.add('head-extra');
+  themeBtn.classList.add('head-extra');
   const paletteBtn = iconButton('list', `${T.palette.replace('…', '')} (${MOD}K)`, () => void openPalette());
   const notesBtn = iconButton('pencil', T.notes, () => notesMenu());
   // Sheet · Assets · Notes: one workbook, three views of it.
@@ -181,7 +184,10 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   notesBtn.append(notesBadge);
   const downloadBtn = el('button', 'btn primary');
   downloadBtn.type = 'button';
-  downloadBtn.append(icon('download', 15), el('span', '', T.download), icon('chevronDown', 14));
+  const downloadChevron = icon('chevronDown', 14);
+  downloadChevron.classList.add('btn-chevron');
+  downloadBtn.append(icon('download', 15), el('span', 'btn-label', T.download), downloadChevron);
+  downloadBtn.title = T.download;
   const fileMark = el('span', 'brand-mark');
   fileMark.append(icon('sheet', 14));
   head.append(back, fileMark, titleBtn, status, viewSwitch, el('div', 'grow'), notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, downloadBtn);
@@ -327,6 +333,10 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   notes.el.hidden = true;
   gridWrap.append(grid, findbar);
   root.append(head, toolbar, fbar, legacyBar, gridWrap, tabsBar, assets.el, notes.el);
+  // A toolbar wider than the window scrolls; fade its edge while there is more to the right.
+  const toolbarEdge = () => toolbar.classList.toggle('more-right', toolbar.scrollLeft + toolbar.clientWidth < toolbar.scrollWidth - 1);
+  toolbar.addEventListener('scroll', toolbarEdge, { passive: true });
+  new ResizeObserver(toolbarEdge).observe(toolbar);
   /** Switches what the workbook shows; leaving Notes saves the note being written. */
   async function setView(next: View) {
     if (next === view) return;

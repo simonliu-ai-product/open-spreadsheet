@@ -1,6 +1,6 @@
 {
   "name": "open-spreadsheet",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "open-spreadsheet: an Excel-like spreadsheet for agents and people. `npx open-spreadsheet init my-sheets` — the CLI of @open-spreadsheet/core under its short name.",
   "type": "module",
   "license": "MIT",

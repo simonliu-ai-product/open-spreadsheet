@@ -2,7 +2,7 @@
 
 類 Excel 的試算表框架，屬於 open-x「built for coding agents」系列。計算引擎和格子介面都自己寫，不用 Univer、HyperFormula 或其他試算表套件。目標是盡可能支援 xlsx／csv 會用到的公式。
 
-> 狀態（2026-11-16）：M0–M2 完成，M3、M5 大部分完成。引擎 337 個函數，加上數字格式、日期時間輸入、公式複製位移、工作表改名／刪除；單元測試 206 個（含打包後從 node_modules 執行的檢查）、瀏覽器端對端檢查 113 項全部通過。介面風格與 open-doc／open-slide 一致（側欄、⌘K 指令面板、五種語言、淺深色）。有 `check`、skills、`current.json`、stdio MCP server（29 個工具，SHA-256 樂觀鎖）、儲存格備註與 `apply-notes`與 Claude Code／Antigravity plugin。npm：`@open-spreadsheet/core` 與短名稱 `open-spreadsheet`（`npx open-spreadsheet init`）0.4.0（圖表風格、筆記插圖與 Markdown／PDF 匯出、素材與筆記的最近／最愛／搜尋、素材改名；0.3.0 Assets：圖表圖片與 Markdown 筆記；保護範圍；Excel 條件格式的前 N 名／平均／圖示集），`@open-spreadsheet/engine` 0.1.0。
+> 狀態（2026-11-16）：M0–M2 完成，M3、M5 大部分完成。引擎 337 個函數，加上數字格式、日期時間輸入、公式複製位移、工作表改名／刪除；單元測試 206 個（含打包後從 node_modules 執行的檢查）、瀏覽器端對端檢查 113 項全部通過。介面風格與 open-doc／open-slide 一致（側欄、⌘K 指令面板、五種語言、淺深色）。有 `check`、skills、`current.json`、stdio MCP server（29 個工具，SHA-256 樂觀鎖）、儲存格備註與 `apply-notes`與 Claude Code／Antigravity plugin。npm：`@open-spreadsheet/core` 與短名稱 `open-spreadsheet`（`npx open-spreadsheet init`）0.4.1（單值函數對範圍逐格計算，同 Excel；窄寬度的編輯器頂部列；0.4.0 圖表風格、筆記插圖與 Markdown／PDF 匯出、素材與筆記的最近／最愛／搜尋、素材改名；0.3.0 Assets：圖表圖片與 Markdown 筆記；保護範圍；Excel 條件格式的前 N 名／平均／圖示集），`@open-spreadsheet/engine` 0.1.0。
 
 ---
 
