@@ -25,6 +25,7 @@ pnpm dev         # open-spreadsheet dev，預設 port 5373
 
 ## 慣例
 
+- 工作區不需要自己安裝 core：活頁簿是 JSON，沒有使用者程式碼 import core。`OPEN_SPREADSHEET_CACHE_DIR` 可把 Vite 快取移出工作區，讓 CoStaff Desktop 這類宿主用一份共用的 core 服務多個工作區。
 - 引擎行為以 Excel 為準：先查微軟文件，有疑問就寫測試記下 Excel 的結果。
 - 新增函數時加進 `functions.ts` 的函數表，並在 `engine.test.ts` 補測試。
 - 引擎用 Node 的 strip-types 執行，不能用 TypeScript 的 parameter properties、enum 等需要轉譯的語法。

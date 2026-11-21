@@ -306,7 +306,8 @@ export async function startDev({ root, port, open, host }) {
     configFile: false,
     root: path.join(CORE, 'app'),
     // Vite's cache lives in the workspace, not next to the framework, so read-only installs work.
-    cacheDir: path.join(root, 'node_modules', '.vite', 'open-spreadsheet'),
+    // A host serving many workspaces from one shared copy (CoStaff Desktop) moves it out of the workspace.
+    cacheDir: path.join(process.env.OPEN_SPREADSHEET_CACHE_DIR || path.join(root, 'node_modules', '.vite'), 'open-spreadsheet'),
     logLevel: 'info',
     plugins: [apiPlugin(root)],
     server: { port, strictPort: true, open, host, fs: { allow: [CORE, ENGINE, root] } },
