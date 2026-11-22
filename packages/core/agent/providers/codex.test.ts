@@ -115,7 +115,9 @@ describe('codex provider', () => {
     const events: any[] = [];
     const base = { cwd: ws, writableRoots: [path.join(ws, 'sheets'), '/elsewhere/shared'], prompt: 'hi', systemPromptAppend: 'PREAMBLE', model: 'gpt-x', effort: 'low', signal: new AbortController().signal, emit: (e: any) => events.push(e), askUser: async () => null, requestPermission: async () => false };
     await provider.run({ ...base, resume: null });
-    expect(g.__codexOptions.config).toEqual({ mcp_servers: { 'open-spreadsheet': { command: '/usr/bin/node', args: ['/core/mcp.js', '--cwd', ws] } } });
+    expect(g.__codexOptions.config).toEqual({
+      mcp_servers: { 'open-spreadsheet': { command: '/usr/bin/node', args: ['/core/mcp.js', '--cwd', ws], default_tools_approval_mode: 'approve' } },
+    });
     expect(g.__codexThread.options).toMatchObject({ workingDirectory: ws, sandboxMode: 'workspace-write', approvalPolicy: 'never', model: 'gpt-x', modelReasoningEffort: 'low', additionalDirectories: ['/elsewhere/shared'] });
     expect(g.__codexInput).toBe('PREAMBLE\n\nhi');
     expect(events.map((e) => e.type)).toEqual(['session-id', 'text-start', 'text-end', 'result', 'session-id']);

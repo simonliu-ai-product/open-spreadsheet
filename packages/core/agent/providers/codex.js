@@ -178,7 +178,21 @@ export function createCodexProvider(opts = {}) {
       const localCli = findSpawnableCli('codex');
       const codex = new sdk.Codex({
         ...(localCli ? { codexPathOverride: localCli } : {}),
-        ...(opts.mcpServer ? { config: { mcp_servers: { 'open-spreadsheet': { command: opts.mcpServer.command, args: opts.mcpServer.args } } } } : {}),
+        // The framework's own tools are approved up front: with approvals off, Codex
+        // would otherwise refuse every MCP call and could not change a workbook at all.
+        ...(opts.mcpServer
+          ? {
+              config: {
+                mcp_servers: {
+                  'open-spreadsheet': {
+                    command: opts.mcpServer.command,
+                    args: opts.mcpServer.args,
+                    default_tools_approval_mode: 'approve',
+                  },
+                },
+              },
+            }
+          : {}),
       });
       // The sandbox can write the working directory (the workspace); the prompt
       // keeps edits to sheets/ and assets/. Roots outside it are added explicitly.

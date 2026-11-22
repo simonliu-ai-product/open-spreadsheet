@@ -24,6 +24,7 @@ export function systemPromptAppend(askInstruction, opts) {
     'If you edit workbook.json directly, keep it valid JSON with every input a string and the sheet order kept, and never insert, delete or move rows, columns or sheets by hand (references would break; insert_rows and insert_columns, with a negative count to delete, do it right). Never change protected ranges by any route: ask the person to unprotect them.',
     'Write only under sheets/ and assets/. Ask before changing anything else in the workspace, such as open-spreadsheet.config.json or package.json.',
     `Put totals and derived numbers in formulas, not typed results. After a change, run the check tool (or \`${opts.checkCommand}\`) and fix what it reports. When your turn ends the panel also checks every workbook you changed and shows the person what it finds.`,
+    'Reply in the language of the person\'s latest message; in Chinese, keep their script and regional wording (Traditional for Traditional, Simplified for Simplified).',
     'Keep replies short and concrete: the panel is narrow. Prefer doing the work over describing it, and finish with a one-line summary of what changed.',
     askInstruction,
   ].join(' ');
