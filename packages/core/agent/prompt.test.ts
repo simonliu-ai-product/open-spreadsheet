@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain JS module
-import { answersPrompt, buildTurnPrompt, checkFixPrompt, editedPrompt, extractQuestionBlock, systemPromptAppend, TEXT_QUESTIONS_INSTRUCTION } from './prompt.js';
+import { answersPrompt, buildTurnPrompt, editedPrompt, extractQuestionBlock, systemPromptAppend, TEXT_QUESTIONS_INSTRUCTION } from './prompt.js';
 
 describe('agent prompt', () => {
   it('steers the agent to the framework ops, the skills and the check', () => {
@@ -39,13 +39,10 @@ describe('agent prompt', () => {
     expect(extractQuestionBlock('<open-spreadsheet-questions>not json</open-spreadsheet-questions>')).toBeNull();
   });
 
-  it('writes answers, edits and check fixes as prompts', () => {
+  it('writes answers and edits as prompts', () => {
     const q = [{ header: '', question: 'Which months?', options: [], multiSelect: false }];
     expect(answersPrompt(q, { 'Which months?': 'Q1' })).toContain('- Which months? Q1');
     expect(answersPrompt(q, null)).toContain('skipped');
     expect(editedPrompt('old <x>', 'new')).toContain('<original-message>\nold &lt;x>\n</original-message>\n\nnew');
-    const fix = checkFixPrompt([{ workbook: 'budget', sheet: 'Sheet1', address: 'B4', severity: 'error', message: '=FOO() → #NAME?' }], 3);
-    expect(fix).toContain('- budget · Sheet1!B4 [error] =FOO() → #NAME?');
-    expect(fix).toContain('…and 2 more');
   });
 });

@@ -5,7 +5,6 @@
  *
  * @typedef {import('./types.d.ts').AgentTurnContext} AgentTurnContext
  * @typedef {import('./types.d.ts').AgentQuestion} AgentQuestion
- * @typedef {import('./types.d.ts').AgentCheckFinding} AgentCheckFinding
  *
  * @typedef {object} PromptOptions
  * @property {string} checkCommand  how to run `open-spreadsheet check` from the workspace
@@ -57,13 +56,6 @@ export function buildTurnPrompt(text, context) {
   const lines = contextLines(context);
   if (lines.length === 0) return text;
   return `${text}\n\n<open-spreadsheet-context>\n${lines.join('\n')}\n</open-spreadsheet-context>`;
-}
-
-/** What the transcript's fix button sends after the dev server's check. @param {AgentCheckFinding[]} findings */
-export function checkFixPrompt(findings, total) {
-  const lines = findings.map((f) => `- ${f.workbook}${f.sheet || f.address ? ` · ${[f.sheet, f.address].filter(Boolean).join('!')}` : ''} [${f.severity}] ${f.message}`);
-  const more = total > findings.length ? `\n- …and ${total - findings.length} more` : '';
-  return `\`open-spreadsheet check\` found these problems. Fix them, keeping everything else as it is:\n${lines.join('\n')}${more}`;
 }
 
 const QUESTIONS_RE = /<open-spreadsheet-questions>([\s\S]*?)<\/open-spreadsheet-questions>/i;
