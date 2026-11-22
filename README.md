@@ -77,8 +77,6 @@ npx -p @open-spreadsheet/core open-spreadsheet init my-sheets
 cd my-sheets && pnpm install && pnpm dev    # http://localhost:5373
 ```
 
-Or open the folder in [CoStaff Desktop](../open-desktop).
-
 ## The file contract
 
 ```json

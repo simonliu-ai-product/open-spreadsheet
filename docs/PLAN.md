@@ -106,7 +106,7 @@ my-sheets/
 | 階段 | 內容 |
 | --- | --- |
 | **M0 spike**（完成） | 引擎核心、90 個函數、116 個測試、基準測試 |
-| **M1 MVP**（完成） | CLI、dev server、格子介面、檔案監看、CoStaff Desktop 轉接描述檔、playground 範例 |
+| **M1 MVP**（完成） | CLI、dev server、格子介面、檔案監看、桌面宿主的轉接描述檔、playground 範例 |
 | **M2**（完成） | 欄寬列高拖曳與自動調整、插入／刪除列欄、填滿控點與 ⌘D／⌘R、數字格式（含自訂代碼）、凍結窗格、合併儲存格、文字樣式與顏色、排序、尋找取代、右鍵選單、工作表分頁操作、狀態列統計、縮放。範圍依欄建索引、dirty 依欄查詢（累計加總 649 → 162 ms） |
 | M3（部分完成） | ✅ xlsx／csv 匯入匯出（自己寫 zip，含共用公式、格式、合併、凍結）。⬜ Excel 快取值 oracle 測試；✅ 函數補到 300 個以上（目前 337。第三批：工程類進位轉換、位元、複數、CONVERT，機率分配 NORM／T／CHISQ／F／BINOM／POISSON／GAMMA／BETA 與反函數，其餘數學統計；第二批：第二批補了數學三角、統計、文字、日期、XMATCH／LOOKUP／ADDRESS、資訊、財務、D 系列與相容性別名，測試用的是微軟文件裡的範例值） |
 | M3b（完成） | 條件式格式（醒目提示、重複值、色階、資料橫條）、資料驗證下拉清單、自動篩選；範圍跟著插入／刪除列欄移動；`check` 與 MCP `set_layout` 都支援。✅ 這三項的 xlsx 匯入匯出（`conditionalFormatting`＋`dxfs`、`dataValidations`、`autoFilter`＋隱藏列；用 openpyxl 讀回驗證過結構） |

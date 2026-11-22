@@ -77,8 +77,6 @@ npx -p @open-spreadsheet/core open-spreadsheet init my-sheets
 cd my-sheets && pnpm install && pnpm dev    # http://localhost:5373
 ```
 
-也可以用 [CoStaff Desktop](../open-desktop) 開啟資料夾。
-
 ## 檔案契約
 
 見 [README.md](README.md#the-file-contract) 與 `sheet-authoring` skill。
