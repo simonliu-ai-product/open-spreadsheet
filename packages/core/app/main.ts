@@ -1,9 +1,15 @@
+import { mountAgentPanel } from './agent-panel.ts';
 import { openBook } from './book.ts';
 import { renderHome } from './home.ts';
-import { applyTheme } from './ui.ts';
+import { applyTheme, el } from './ui.ts';
 
 applyTheme();
-const app = document.getElementById('app')!;
+// The page on the left; the agent panel, when shown, on the right.
+const layout = el('div', 'app-layout');
+const app = el('div', 'app-main');
+layout.append(app);
+document.getElementById('app')!.append(layout);
+mountAgentPanel(layout);
 
 async function route(): Promise<void> {
   const book = /^#\/w\/([^/]+)$/.exec(location.hash);

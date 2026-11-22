@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync,
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assetPath, assetsDir, listAssets, MIME, readAsset, readChartStyles, readFavorites, renameAsset, renderChart, saveImage, setFavorite, SHARED, trashAsset, writeChartStyles, writeNote } from './assets.js';
+import { registerAgentRoutes } from './agent/routes.js';
 import { currentFile, hashOf, ID, listWorkbooks, OpsError, readWorkbook, trashWorkbook, workbookFile, writeWorkbook } from './ops.js';
 
 const CORE = path.dirname(fileURLToPath(import.meta.url));
@@ -163,6 +164,9 @@ function apiPlugin(root) {
         if (ownWrites.get(m[1]) === body) return;
         server.ws.send({ type: 'custom', event: 'open-spreadsheet:changed', data: { id: m[1], hash: hashOf(body) } });
       });
+
+      // The in-app agent panel: /__agent/* (agent/routes.js).
+      registerAgentRoutes(server, { root, allowedWrite });
 
       // What the person is looking at, for agents: node_modules/.open-spreadsheet/current.json.
       let writing = Promise.resolve();

@@ -70,6 +70,17 @@ collectors: {
 agy plugin install https://github.com/simonliu-ai-product/open-spreadsheet/tree/latest
 ```
 
+### 💬 格子旁邊的 Agent
+
+編輯器有自己的 Agent 面板（標題列的 ✦ 按鈕，或 ⌘J／Ctrl+J），用這台電腦上的 **OpenAI Codex** 驅動：
+
+- **連接一次就好。** 面板會在 PATH 找到 `codex` CLI，用工作區的套件管理器加入 `@openai/codex-sdk`，並沿用 CLI 的登入，不會另外存任何金鑰。
+- **它看得到你在看的地方。** 每則訊息都帶著目前的試算表、工作表和選取範圍；Codex 也會拿到 open-spreadsheet 的 MCP server，透過 `write_cells`、`insert_rows` 等工具修改：參照保持正確、受保護的範圍改不動、根據舊版本的寫入會被拒絕。每次修改，格子都會馬上更新。
+- **每一輪結束都會檢查。** 這一輪改到的試算表，dev server 會跑 `open-spreadsheet check`，把結果放進對話，並附上「請 agent 修正」按鈕。
+- Agent 要問問題時會變成小表單；以前的對話在「對話紀錄」。對話存在 `node_modules/.open-spreadsheet/agent-sessions.json`，不會進版本控制。
+- 只聽這台電腦的指令（用 `--host` 開放網路時，別台電腦也用不了）；`open-spreadsheet.config.json` 寫 `"agent": false` 可以關掉；宿主 App 若宣告自己有 Agent（`window.openxHost` 的 `agent` 能力），面板會自動隱藏。
+- 目前只支援 Codex。不提供 Claude Code，因為 Anthropic 不允許第三方產品使用使用者的 claude.ai 登入；Antigravity 等官方支援第三方 harness 再加入。
+
 ## 快速開始
 
 ```bash
@@ -88,6 +99,7 @@ pnpm test        # 引擎、ops 與 MCP 測試（vitest）
 pnpm typecheck
 pnpm bench       # 重算效能
 node scripts/ui-e2e.mjs <輸出資料夾>   # 用 Chromium 操作格子並截圖
+node scripts/agent-e2e.mjs <輸出資料夾>   # Agent 面板，用替身 Codex SDK（不需登入、不連網）
 ```
 
 ## 授權

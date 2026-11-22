@@ -1,5 +1,7 @@
 /** The workspace's home: a sidebar and a gallery of workbooks or templates, like open-doc and open-slide. */
 import { formatValue, impliedFormat, Workbook } from '@open-spreadsheet/engine';
+import { setAgentContext } from './agent.ts';
+import { agentToggleButton } from './agent-panel.ts';
 import { isZh, LANGS, lang, locale, setLang, T } from './i18n.ts';
 import { icon } from './icons.ts';
 import { exportXlsx, readSpreadsheetFile } from './io.ts';
@@ -115,6 +117,7 @@ function thumbnail(data: WorkbookData): HTMLElement {
 
 export async function renderHome(app: HTMLElement, view: 'books' | 'templates'): Promise<void> {
   const res = await api.list();
+  setAgentContext({});
   document.title = `${res.name} — open-spreadsheet`;
   const taken = new Set(res.workbooks.map((w) => w.id));
   const shell = el('div', 'shell');
@@ -167,7 +170,8 @@ export async function renderHome(app: HTMLElement, view: 'books' | 'templates'):
     toggleTheme();
     themeBtn.replaceChildren(icon(currentTheme() === 'dark' ? 'moon' : 'sun', 15));
   });
-  foot.append(el('span', 'grow'), langBtn, themeBtn);
+  const agentBtn = agentToggleButton();
+  foot.append(el('span', 'grow'), ...(agentBtn ? [agentBtn] : []), langBtn, themeBtn);
   side.append(brand, search, nav, section, ws, el('div', 'grow'), foot);
 
   // ----- main panel -----

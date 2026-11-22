@@ -20,6 +20,8 @@ import {
 } from '@open-spreadsheet/engine';
 import { isProtectedCell, touchesProtected, BLANK, columnValues, conditionalLook, type CellLook, DEFAULT_HIGHLIGHT, filteredRows, shiftRange, validationAt } from './features.ts';
 import { type ChartSource, type ChartStyle, chartData, chartFile, chartSvg } from './charts.ts';
+import { agentAvailable, setAgentContext, toggleOpen as toggleAgent } from './agent.ts';
+import { agentToggleButton } from './agent-panel.ts';
 import { createAssetsView, createNotesView, fileStem, uploadAsset } from './assets.ts';
 import { printHtml } from './print.ts';
 import { api } from './home.ts';
@@ -141,6 +143,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   const sheet = (): SheetData => data.sheets[si]!;
   const sname = () => sheet().name;
   document.title = `${data.title} — open-spreadsheet`;
+  setAgentContext({ workbook: id, title: data.title });
 
   // ---------- DOM ----------
   const root = el('div', 'book');
@@ -190,7 +193,11 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   downloadBtn.title = T.download;
   const fileMark = el('span', 'brand-mark');
   fileMark.append(icon('sheet', 14));
-  head.append(back, fileMark, titleBtn, status, viewSwitch, el('div', 'grow'), notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, downloadBtn);
+  // The agent panel's switch stays when the header narrows: the panel is how an agent edits this workbook.
+  const agentBtn = agentToggleButton();
+  // Find is also ⌘F and in ⌘K; at the narrowest it makes room for the agent switch.
+  if (agentBtn) findBtn.classList.add('head-find');
+  head.append(back, fileMark, titleBtn, status, viewSwitch, el('div', 'grow'), notesBtn, paletteBtn, findBtn, helpBtn, themeBtn, ...(agentBtn ? [agentBtn] : []), downloadBtn);
 
   // Toolbar
   const toolbar = el('div', 'toolbar');
@@ -1020,6 +1027,8 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       if (key === lastReport) return;
       lastReport = key;
       import.meta.hot?.send('open-spreadsheet:current', payload);
+      // The agent panel sends the same as each turn's context.
+      setAgentContext({ workbook: id, title: data.title, sheet: payload.sheet, active: payload.active, selection: payload.selection, input: payload.input || undefined, note: payload.note || undefined });
     }, 250);
   }
 
@@ -3530,6 +3539,7 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
       cmd(T.gView, T.freezeHere(formatA1(active.row, active.col)), () => setFreeze(active.row, active.col), 'snowflake', undefined, 'freeze panes'),
       cmd(T.gView, T.toggleTheme, () => themeBtn.click(), 'moon', undefined, 'theme dark light'),
       cmd(T.gView, T.shortcuts, showShortcuts, 'keyboard', undefined, 'keyboard shortcuts help'),
+      ...(agentAvailable() ? [cmd(T.gView, T.agent.toggle, toggleAgent, 'sparkles', `${MOD}J`, 'agent codex ai assistant chat')] : []),
       ...[50, 75, 100, 125, 150, 200].map((z) => cmd(T.gView, `${T.zoom} ${z}%`, () => ((zoomSel.value = String(z / 100)), zoomSel.dispatchEvent(new Event('change'))), undefined, undefined, 'zoom')),
       cmd(T.gSheets, T.addSheet, addSheet, 'plus', undefined, 'add new sheet'),
       cmd(T.gSheets, `${T.renameSheet}：${name()}`, () => void renameSheet(si), 'pencil', undefined, 'rename sheet'),
@@ -3552,9 +3562,9 @@ export async function openBook(app: HTMLElement, id: string): Promise<void> {
   function showShortcuts() {
     const keys = [
       'Enter / Tab', 'F2', 'Esc', 'F4', `${MOD}Z / ⇧${MOD}Z`, `${MOD}C / X / V`, `⇧${MOD}V`, `${MOD}B / I / U`, `${MOD}D / ${MOD}R`,
-      `${MOD}Enter`, `${MOD}; / ⇧${MOD};`, `${MOD}↑↓←→`, `${MOD}A`, `${MOD}F`, `${MOD}K`, '⌫ / Delete', '⇧ + ↑↓←→', '⌥↑ / ⌥↓', '⌃`',
+      `${MOD}Enter`, `${MOD}; / ⇧${MOD};`, `${MOD}↑↓←→`, `${MOD}A`, `${MOD}F`, `${MOD}K`, '⌫ / Delete', '⇧ + ↑↓←→', '⌥↑ / ⌥↓', '⌃`', `${MOD}J`,
     ];
-    const rows = keys.map((k, i) => [k, T.shortcutList[i] ?? ''] as [string, string]);
+    const rows = keys.map((k, i) => [k, T.shortcutList[i] ?? ''] as [string, string]).filter(([k]) => k !== `${MOD}J` || agentAvailable());
     const back = el('div', 'dialog-back');
     const box = el('div', 'dialog wide');
     box.append(el('h2', '', T.shortcuts));

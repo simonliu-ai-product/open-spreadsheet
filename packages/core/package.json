@@ -24,6 +24,7 @@
     "server.js",
     "ops.js",
     "assets.js",
+    "agent",
     "app",
     "skills",
     "templates",

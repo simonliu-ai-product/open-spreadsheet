@@ -9,6 +9,7 @@ pnpm test        # 引擎測試（vitest）
 pnpm typecheck   # engine + core/app
 pnpm bench       # 重算效能
 node scripts/ui-e2e.mjs <輸出資料夾>   # Chromium 端對端檢查（113 項）＋截圖
+node scripts/agent-e2e.mjs <輸出資料夾>   # Agent 面板端對端檢查，工作區裝替身 @openai/codex-sdk（不登入、不連網）
 # 在工作區內（例如 ../playground/open-spreadsheet-sample）
 pnpm dev         # open-spreadsheet dev，預設 port 5373
 ```
@@ -20,6 +21,8 @@ pnpm dev         # open-spreadsheet dev，預設 port 5373
   - `app/book.ts` 編輯器（格子、凍結窗格、合併、格式、選單、填滿、尋找、歷史、分頁）、`home.ts` 首頁、`io.ts`（CSV／xlsx 與 zip）、`ui.ts`（選單、對話框、⌘K、主題）、`i18n.ts`＋`i18n-more.ts`（五種語言，新字串五種都要補）、`templates.ts`、`help.ts`（函數說明）
 - `packages/open-spreadsheet/`：npm 上沒有 scope 的 `open-spreadsheet`，只是 `@open-spreadsheet/core` CLI 的短名稱（`npx open-spreadsheet init`），也避免這個名稱被別人搶註
 - `packages/core/assets.js`：assets（`sheets/<id>/assets/`、共用 `assets/`）的列出、筆記讀寫、上傳、刪除（移到 `.trash`）與 `renderChart`（伺服器端用 `app/charts.ts` 畫 SVG；安裝後讀 `dist/charts.js`，由 `scripts/build-charts.mjs` 在 pack 前產生）。圖表不再放在格子上。圖表風格：內建的在 `app/charts.ts` 的 `BUILTIN_STYLES`，工作區自訂的存在共用的 `assets/chart-styles.json`（`readChartStyles`／`writeChartStyles`）；圖表 metadata 的 `style` 沒寫就跟工作區預設。最愛存在 `.open-spreadsheet/favorites.json`（個人、git-ignored）
+- `packages/core/agent/`：編輯器內 Agent 面板的伺服器端，純 JS（型別在 `types.d.ts`，app 用 `import type` 共用）。移植自 open-doc 的 agent：`providers/`（目前只有 `codex.js`，`@openai/codex-sdk` 從使用者工作區解析，不是 core 的依賴；每個 thread 都加上 open-spreadsheet MCP server）、`runner.js`（一個對話一次一輪、問題與權限提示）、`store.js`（存在 `node_modules/.open-spreadsheet/agent-sessions.json`）、`prompt.js`（引導 agent 走 MCP／ops、用 skills、只寫 `sheets/` 與 `assets/`）、`check-after-turn.js`（比對每輪前後各 workbook.json 的 hash，改到的就跑 `checkWorkbook`）、`routes.js`（`/__agent/*`，只接受本機，`"agent": false` 可關）
+  - app 端：`agent.ts`（狀態、API、SSE）、`agent-panel.ts`（面板、連接、紀錄、輸入框，⌘J）、`agent-transcript.ts`（對話內容，只重畫變動的項目）、`host.ts`（讀 `window.openxHost`；宿主宣告 `agent` 能力時面板與開關都不出現）。`main.ts` 把頁面和面板排成左右兩欄，`book.ts` 的 `reportCurrent` 同時更新面板的 context
 - `plugins/open-spreadsheet/`：Claude Code／Antigravity plugin；`skills/` 是 `packages/core/skills/` 的複本，`agent.test.ts` 檢查兩邊一致
 - 工作區格式：`open-spreadsheet.config.json` 加 `sheets/<id>/workbook.json`，存使用者輸入的原文
 
@@ -34,4 +37,5 @@ pnpm dev         # open-spreadsheet dev，預設 port 5373
 - 重算不可遞迴（長鏈會 stack overflow），維持明確堆疊。
 - 編輯器裡 `active` 是作用中儲存格（不動），`anchor` 是選取範圍會移動的那一角。
 - 所有寫檔都走 `ops.js` 的 `writeWorkbook`（佇列＋SHA-256）；檢視器存檔帶 If-Match，412 時重新載入。
+- Agent 只提供 Codex：Claude Code 不能用（Anthropic 不允許第三方產品使用 claude.ai 登入），Antigravity 等官方支援第三方 harness。新增 provider 是 `agent/types.js` 多一個 id、`providers/` 多一個檔案。
 - 填滿色彩在淺深色主題都一樣，所以有填滿的格子文字顏色依填滿決定（`inkFor`），不跟主題。

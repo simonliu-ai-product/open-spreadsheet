@@ -70,6 +70,17 @@ collectors: {
 agy plugin install https://github.com/simonliu-ai-product/open-spreadsheet/tree/latest
 ```
 
+### 💬 An agent beside the grid
+
+The editor has its own agent panel (the ✦ button in the header, or ⌘J / Ctrl+J), driven by **OpenAI Codex** on this computer:
+
+- **Connect once.** The panel finds the `codex` CLI on your PATH and adds `@openai/codex-sdk` to the workspace with its package manager; it reuses the CLI's sign-in. No key is stored anywhere.
+- **It works on what you see.** Each message carries the open workbook, sheet and selection, and Codex gets the open-spreadsheet MCP server, so it edits through `write_cells`, `insert_rows` and the other tools: references stay right, protected ranges stay locked, and a stale write is refused. The grid shows each change as it lands.
+- **Checked after every turn.** When a turn changes a workbook, the dev server runs `open-spreadsheet check` on it and puts what it finds in the conversation, with a button to ask for a fix.
+- Questions come back as a small form; past conversations are under History. Conversations live in `node_modules/.open-spreadsheet/agent-sessions.json`, never in tracked files.
+- It answers only to this machine (not to others when the server runs with `--host`), `"agent": false` in `open-spreadsheet.config.json` turns it off, and a host app that declares its own agent (the `agent` capability of `window.openxHost`) hides it.
+- Codex only for now. Claude Code is not offered because Anthropic does not allow third-party products to run on a claude.ai login; Antigravity waits for official support for third-party harnesses.
+
 ## Get started
 
 ```bash
@@ -100,7 +111,7 @@ cd my-sheets && pnpm install && pnpm dev    # http://localhost:5373
 | Path | What |
 | --- | --- |
 | `packages/engine` | `@open-spreadsheet/engine` — parser, evaluator, functions, number formats, dependency graph. |
-| `packages/core` | `@open-spreadsheet/core` — the CLI (`dev`, `init`, `check`, `sync-skills`), the dev server, the grid editor (`app/`), the MCP server (`mcp.js`) and the skills. |
+| `packages/core` | `@open-spreadsheet/core` — the CLI (`dev`, `init`, `check`, `sync-skills`), the dev server, the grid editor (`app/`), the agent panel's server (`agent/`), the MCP server (`mcp.js`) and the skills. |
 | `plugins/open-spreadsheet` | The agent plugin for Claude Code and Antigravity. |
 | `docs/PLAN.md` | Architecture, function coverage, milestones. |
 
@@ -111,6 +122,7 @@ pnpm test        # engine, ops and MCP tests (vitest)
 pnpm typecheck
 pnpm bench       # recalculation benchmarks
 node scripts/ui-e2e.mjs <out-dir>   # drive the grid in Chromium, with screenshots
+node scripts/agent-e2e.mjs <out-dir>   # the agent panel, with a stand-in Codex SDK (no login, no network)
 ```
 
 ## License
