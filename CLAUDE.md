@@ -25,7 +25,7 @@ pnpm dev         # open-spreadsheet dev，預設 port 5373
 
 ## 慣例
 
-- 分支與發版照 `release-flow` skill（`.claude/skills/release-flow/`）：從 `nightly` 開 `feat/`、`fix/`、`chore/` 分支，改到 `packages/*` 就附 changeset（`pnpm changeset`），PR 開回 `nightly`；維護者決定發版時才把 `nightly` 合進 `main`，由 CI 用 trusted publishing 發佈。不要手動改版本號、CHANGELOG 或 plugin 版本，也不要在本機 publish。
+- 分支與發版照 `release-flow` skill（`.claude/skills/release-flow/`）：從 `main` 開 `feat/`、`fix/`、`chore/` 分支，改到 `packages/*` 就附 changeset（`pnpm changeset`），PR 開回 `main`；改動累積在 `main`，維護者決定發版時合併「chore: release packages」PR，CI 才用 trusted publishing 發佈，並把 `latest` 分支移到這一版（agent plugin 從 `latest` 安裝）。不要手動改版本號、CHANGELOG 或 plugin 版本，也不要在本機 publish。
 - 工作區不需要自己安裝 core：活頁簿是 JSON，沒有使用者程式碼 import core。`OPEN_SPREADSHEET_CACHE_DIR` 可把 Vite 快取移出工作區，讓宿主 App 用一份共用的 core 服務多個工作區。
 - 引擎行為以 Excel 為準：先查微軟文件，有疑問就寫測試記下 Excel 的結果。
 - 新增函數時加進 `functions.ts` 的函數表，並在 `engine.test.ts` 補測試。

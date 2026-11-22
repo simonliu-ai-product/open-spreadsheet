@@ -67,7 +67,7 @@ collectors: {
 /plugin install open-spreadsheet --marketplace simonliu-ai-product/open-spreadsheet
 
 # Google Antigravity
-agy plugin install https://github.com/simonliu-ai-product/open-spreadsheet
+agy plugin install https://github.com/simonliu-ai-product/open-spreadsheet/tree/latest
 ```
 
 ## Get started
