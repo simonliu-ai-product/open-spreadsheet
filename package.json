@@ -7,9 +7,14 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit && tsc -p packages/core/tsconfig.json --noEmit",
-    "bench": "node --experimental-strip-types packages/engine/bench/recalc.ts"
+    "bench": "node --experimental-strip-types packages/engine/bench/recalc.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-plugin-version.mjs && pnpm install --lockfile-only",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@types/node": "^26.6.6",
     "playwright": "1.56.1",
     "typescript": "^7.0.2",
