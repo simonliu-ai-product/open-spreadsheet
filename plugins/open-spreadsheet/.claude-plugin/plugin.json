@@ -1,7 +1,7 @@
 {
   "name": "open-spreadsheet",
   "displayName": "open-spreadsheet",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Build Excel-like spreadsheets as plain JSON — formulas, number formats, sheets, frozen headers — that people edit in a grid and agents edit as files, in an open-spreadsheet workspace.",
   "author": { "name": "Simon Liu", "url": "https://github.com/LiuYuWei" },
   "license": "MIT",
