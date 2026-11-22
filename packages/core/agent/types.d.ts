@@ -2,10 +2,12 @@
 // (app/agent*.ts) share. The values live in types.js.
 
 export type AgentProviderId = 'codex';
-export type AgentEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+/** The levels the panel has words for; a model may offer others ('ultra'), which pass through as given. */
+export type KnownAgentEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type AgentEffort = string;
 
 export declare const AGENT_PROVIDER_IDS: readonly AgentProviderId[];
-export declare const AGENT_EFFORTS: readonly AgentEffort[];
+export declare const AGENT_EFFORTS: readonly KnownAgentEffort[];
 export declare function isAgentProviderId(value: unknown): value is AgentProviderId;
 export declare function isAgentEffort(value: unknown): value is AgentEffort;
 export declare function sessionSummary(session: AgentSession): AgentSessionSummary;

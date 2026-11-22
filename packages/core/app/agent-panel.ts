@@ -33,6 +33,10 @@ import { locale, T } from './i18n.ts';
 import { icon } from './icons.ts';
 import { el, iconButton, type MenuEntry, MOD, showMenu, toast } from './ui.ts';
 
+/** A reasoning level in the interface's words, or under its own name when it is newer than the panel ('ultra' → 'Ultra'). */
+const effortLabel = (effort: string, words: Partial<Record<string, string>>): string =>
+  words[effort] ?? effort.charAt(0).toUpperCase() + effort.slice(1);
+
 const CLI_INSTALL: Record<string, string> = { codex: 'npm install -g @openai/codex' };
 
 /** The header button that shows and hides the panel; null when the panel is not offered. */
@@ -233,7 +237,7 @@ export function mountAgentPanel(layout: HTMLElement): void {
     const choice = provider ? resolveModelChoice(provider.models, s.modelChoices[provider.id]) : null;
     const label = choice ? (choice.model.id ? choice.model.label : T.agent.modelDefault) : T.agent.title;
     b.append(icon('sparkles', 14), el('span', 'agent-model-label', label));
-    if (choice?.effort) b.append(el('span', 'agent-model-effort', T.agent.efforts[choice.effort]));
+    if (choice?.effort) b.append(el('span', 'agent-model-effort', effortLabel(choice.effort, T.agent.efforts)));
     b.append(icon('chevronDown', 12));
     b.addEventListener('click', () => {
       const p = currentProvider();
@@ -245,8 +249,8 @@ export function mountAgentPanel(layout: HTMLElement): void {
         }
         if (ch && ch.model.efforts.length) {
           entries.push('-', {
-            label: `${T.agent.reasoning} · ${ch.effort ? T.agent.efforts[ch.effort] : T.agent.effortAuto}`,
-            submenu: [null, ...ch.model.efforts].map((e) => ({ label: e ? T.agent.efforts[e] : T.agent.effortAuto, checked: e === ch.effort, action: () => setModelChoice(p.id, { model: ch.model.id, effort: e }) })),
+            label: `${T.agent.reasoning} · ${ch.effort ? effortLabel(ch.effort, T.agent.efforts) : T.agent.effortAuto}`,
+            submenu: [null, ...ch.model.efforts].map((e) => ({ label: e ? effortLabel(e, T.agent.efforts) : T.agent.effortAuto, checked: e === ch.effort, action: () => setModelChoice(p.id, { model: ch.model.id, effort: e }) })),
           });
         }
         if (readyProviders().some((x) => x.asksPermission)) entries.push({ label: T.agent.autoApprove, checked: getState().autoApprove, action: () => setAutoApprove(!getState().autoApprove) });

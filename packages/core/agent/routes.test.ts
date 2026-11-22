@@ -26,7 +26,9 @@ describe('agent route parsing', () => {
     expect(parseRespond({ allow: false })).toEqual({ allow: false });
     expect(parseRespond({ answers: { q: 'a', n: 1 } })).toEqual({ answers: { q: 'a' } });
     expect(parseRespond({ answers: ['a'] })).toBeNull();
-    expect(parseTurnSettings({ autoApprove: true, model: 'x y', effort: 'bogus', context: { workbook: 'b' } })).toEqual({ autoApprove: true, model: null, effort: null, context: { workbook: 'b' } });
+    expect(parseTurnSettings({ autoApprove: true, model: 'x y', effort: 'Not a level!', context: { workbook: 'b' } })).toEqual({ autoApprove: true, model: null, effort: null, context: { workbook: 'b' } });
+    // A level newer than the panel passes through as the model list gives it.
+    expect(parseTurnSettings({ effort: 'ultra' })).toEqual({ effort: 'ultra' });
     expect(parseTurnSettings({})).toEqual({});
   });
 

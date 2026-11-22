@@ -70,7 +70,7 @@ describe('codex models', () => {
     expect(
       parseCodexModelsCache({
         models: [
-          { slug: 'b', display_name: 'B', priority: 2, supported_reasoning_levels: [{ effort: 'low' }, { effort: 'bogus' }] },
+          { slug: 'b', display_name: 'B', priority: 2, supported_reasoning_levels: [{ effort: 'low' }, { effort: 'ultra' }, { effort: 'Not a level!' }] },
           { slug: 'hidden', visibility: 'hide' },
           { slug: 'a', priority: 1, supported_reasoning_levels: ['high'] },
           { nope: true },
@@ -78,7 +78,8 @@ describe('codex models', () => {
       }),
     ).toEqual([
       { id: 'a', label: 'a', efforts: ['high'] },
-      { id: 'b', label: 'B', efforts: ['low'] },
+      // A level the panel has no word for yet (ultra) still shows; malformed ones do not.
+      { id: 'b', label: 'B', efforts: ['low', 'ultra'] },
     ]);
     expect(parseCodexModelsCache(null)).toEqual([]);
   });
