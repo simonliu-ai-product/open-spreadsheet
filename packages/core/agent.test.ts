@@ -232,7 +232,11 @@ describe('packaging', () => {
     const { readdirSync, statSync } = await import('node:fs');
     const pkg = JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
     const packed = (rel: string) => pkg.files.some((e: string) => rel === e || rel.startsWith(`${e}/`));
-    const sources = ['bin.js', 'mcp.js', 'server.js', 'ops.js', 'assets.js', ...readdirSync(path.join(__dirname, 'app')).filter((f) => /\.ts$/.test(f) && !f.endsWith('.test.ts')).map((f) => `app/${f}`)];
+    const sources = [
+      'bin.js', 'mcp.js', 'server.js', 'ops.js', 'assets.js',
+      ...readdirSync(path.join(__dirname, 'app')).filter((f) => /\.ts$/.test(f) && !f.endsWith('.test.ts')).map((f) => `app/${f}`),
+      ...readdirSync(path.join(__dirname, 'agent'), { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.js')).map((f) => `agent/${f}`),
+    ];
     const problems: string[] = [];
     for (const rel of sources) {
       const text = readFileSync(path.join(__dirname, rel), 'utf8');
