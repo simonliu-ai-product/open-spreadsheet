@@ -1,6 +1,6 @@
 {
   "name": "@open-spreadsheet/core",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "open-spreadsheet: an Excel-like spreadsheet for agents and people. The dev server, the grid editor and the CLI.",
   "type": "module",
   "license": "MIT",
